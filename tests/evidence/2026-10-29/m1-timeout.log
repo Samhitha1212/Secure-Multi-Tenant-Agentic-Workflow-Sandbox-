@@ -1,0 +1,9 @@
+retrying GET http://127.0.0.1:8080/v1/sandboxes/f0c9b2cb-3af8-4292-b42c-499dff8d6203/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=91c883dc7b1f4ae0a74af0b100cdc8f7
+{
+  "sandbox_id": "f0c9b2cb-3af8-4292-b42c-499dff8d6203",
+  "stdout": "M1_TIMEOUT_TEST_STARTED",
+  "stderr": "Execution timed out after 2 seconds.",
+  "exit_code": null,
+  "timed_out": true,
+  "duration_seconds": 2.002710531000048
+}

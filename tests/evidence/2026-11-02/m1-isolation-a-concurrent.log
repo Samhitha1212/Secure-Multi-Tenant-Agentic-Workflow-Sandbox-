@@ -1,0 +1,12 @@
+HOST_A_START=2026-11-02T16:33:12,537458529+05:30
+retrying GET http://127.0.0.1:8080/v1/sandboxes/3cf876df-bd6a-46e8-a442-5b0b785dbf33/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=e9b6e6a46c664c74a1db2661ac97f2c0
+{
+  "sandbox_id": "3cf876df-bd6a-46e8-a442-5b0b785dbf33",
+  "stdout": "EXECUTION_A_FILE_CREATED\nEXECUTION_A_FINISHED\n",
+  "stderr": "",
+  "exit_code": 0,
+  "timed_out": false,
+  "duration_seconds": 45.48352535599997
+}
+HOST_A_END=2026-11-02T16:33:59,849188853+05:30
+Tenant A exit code: 0
