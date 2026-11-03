@@ -1,4 +1,5 @@
-"""Initial M1 Python execution service using OpenSandbox."""
+
+"""Python execution service using OpenSandbox."""
 
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ import asyncio
 import json
 import os
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from pathlib import Path
 
@@ -16,12 +17,20 @@ from opensandbox.config import ConnectionConfig
 from opensandbox.models import WriteEntry
 from opensandbox.models.execd import ExecutionHandlers
 
+from secure_agentic_sandbox.execution_config import (
+    DEFAULT_CPU,
+    DEFAULT_MAX_OUTPUT_BYTES,
+    DEFAULT_MEMORY,
+    DEFAULT_TIMEOUT_SECONDS,
+    MAX_TIMEOUT_SECONDS,
+    ExecutionConfig,
+    parse_output_size,
+)
+
 PYTHON_IMAGE = "python:3.11"
 SANDBOX_FILE = "/tmp/submission.py"
 
 MAX_SOURCE_BYTES = 128 * 1024
-DEFAULT_TIMEOUT_SECONDS = 10
-MAX_TIMEOUT_SECONDS = 120
 
 
 class SubmissionValidationError(ValueError):
@@ -38,6 +47,68 @@ class ExecutionResult:
     exit_code: int | None
     timed_out: bool
     duration_seconds: float
+    output_truncated: bool = False
+
+
+@dataclass
+class BoundedOutputCollector:
+    """Collect stdout and stderr within one shared byte limit."""
+
+    max_bytes: int
+
+    stdout_chunks: list[str] = field(default_factory=list)
+    stderr_chunks: list[str] = field(default_factory=list)
+
+    bytes_used: int = 0
+    truncated: bool = False
+
+    def _append(self, chunks: list[str], text: str) -> None:
+        """Append text without exceeding the combined output limit."""
+
+        if not text or self.truncated:
+            return
+
+        encoded = text.encode("utf-8")
+        remaining = self.max_bytes - self.bytes_used
+
+        if remaining <= 0:
+            self.truncated = True
+            return
+
+        if len(encoded) <= remaining:
+            chunks.append(text)
+            self.bytes_used += len(encoded)
+            return
+
+        # Preserve valid UTF-8 if the limit cuts through a character.
+        retained = encoded[:remaining].decode(
+            "utf-8",
+            errors="ignore",
+        )
+
+        if retained:
+            chunks.append(retained)
+            self.bytes_used += len(retained.encode("utf-8"))
+
+        self.truncated = True
+
+    def append_stdout(self, text: str) -> None:
+        """Collect stdout within the shared output budget."""
+
+        self._append(self.stdout_chunks, text)
+
+    def append_stderr(self, text: str) -> None:
+        """Collect stderr within the shared output budget."""
+
+        self._append(self.stderr_chunks, text)
+
+    @property
+    def stdout(self) -> str:
+        return "".join(self.stdout_chunks)
+
+    @property
+    def stderr(self) -> str:
+        return "".join(self.stderr_chunks)
 
 
 def load_python_source(path: str | Path) -> str:
@@ -74,7 +145,6 @@ def load_python_source(path: str | Path) -> str:
             "The Python source must be valid UTF-8."
         ) from exc
 
-    # Check the encoded size too, not only the initial filesystem size.
     if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
         raise SubmissionValidationError(
             f"Source file exceeds the {MAX_SOURCE_BYTES}-byte limit."
@@ -88,7 +158,8 @@ def make_connection_config() -> ConnectionConfig:
 
     kwargs: dict[str, object] = {
         "domain": os.getenv(
-            "OPEN_SANDBOX_DOMAIN", "127.0.0.1:8080"
+            "OPEN_SANDBOX_DOMAIN",
+            "127.0.0.1:8080",
         ),
         "protocol": os.getenv("OPEN_SANDBOX_PROTOCOL", "http"),
         "use_server_proxy": True,
@@ -105,17 +176,20 @@ def make_connection_config() -> ConnectionConfig:
 async def run_python_file(
     submission_path: str | Path,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    *,
+    cpu: str = DEFAULT_CPU,
+    memory: str = DEFAULT_MEMORY,
+    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
 ) -> ExecutionResult:
-    """Run one Python file in a disposable OpenSandbox sandbox.
+    """Run one Python file in a disposable OpenSandbox sandbox."""
 
-    This is the initial M1 implementation. It is not yet a complete
-    security boundary or a production-ready online code execution API.
-    """
-
-    if not 1 <= timeout_seconds <= MAX_TIMEOUT_SECONDS:
-        raise ValueError(
-            f"Timeout must be between 1 and {MAX_TIMEOUT_SECONDS} seconds."
-        )
+    # Validate all resource settings before creating a sandbox.
+    execution_config = ExecutionConfig(
+        cpu=cpu,
+        memory=memory,
+        timeout_seconds=timeout_seconds,
+        max_output_bytes=max_output_bytes,
+    )
 
     source = load_python_source(submission_path)
     sandbox: Sandbox | None = None
@@ -124,10 +198,14 @@ async def run_python_file(
         sandbox = await Sandbox.create(
             PYTHON_IMAGE,
             connection_config=make_connection_config(),
-            # timeout=timedelta(seconds=timeout_seconds + 30),
-            timeout=timedelta(seconds=max(60, timeout_seconds + 30)),
-            resource={"cpu": "500m", "memory": "512Mi"},
-            metadata={"purpose": "m1-python-execution"},
+            timeout=timedelta(
+                seconds=max(
+                    60,
+                    execution_config.timeout_seconds + 30,
+                )
+            ),
+            resource=execution_config.to_sandbox_resources(),
+            metadata={"purpose": "python-execution"},
         )
 
         await sandbox.files.write_files(
@@ -140,15 +218,16 @@ async def run_python_file(
             ]
         )
 
-
-        stdout_chunks: list[str] = []
-        stderr_chunks: list[str] = []
+        # stdout and stderr share one output budget.
+        output = BoundedOutputCollector(
+            max_bytes=execution_config.max_output_bytes,
+        )
 
         async def collect_stdout(message) -> None:
-            stdout_chunks.append(message.text)
+            output.append_stdout(message.text)
 
         async def collect_stderr(message) -> None:
-            stderr_chunks.append(message.text)
+            output.append_stderr(message.text)
 
         handlers = ExecutionHandlers(
             on_stdout=collect_stdout,
@@ -163,55 +242,93 @@ async def run_python_file(
                     f"python -u {SANDBOX_FILE}",
                     handlers=handlers,
                 ),
-                timeout=timeout_seconds,
+                timeout=execution_config.timeout_seconds,
             )
+
         except TimeoutError:
             return ExecutionResult(
                 sandbox_id=sandbox.id,
-                stdout="".join(stdout_chunks),
+                stdout=output.stdout,
                 stderr=(
-                    "".join(stderr_chunks)
-                    + f"Execution timed out after "
-                    f"{timeout_seconds} seconds."
+                    output.stderr
+                    + (
+                        "Execution timed out after "
+                        f"{execution_config.timeout_seconds} seconds."
+                    )
                 ),
                 exit_code=None,
                 timed_out=True,
                 duration_seconds=time.monotonic() - started,
+                output_truncated=output.truncated,
             )
 
         return ExecutionResult(
             sandbox_id=sandbox.id,
-            stdout="".join(stdout_chunks),
-            stderr="".join(stderr_chunks),
+            stdout=output.stdout,
+            stderr=output.stderr,
             exit_code=execution.exit_code,
             timed_out=False,
             duration_seconds=time.monotonic() - started,
+            output_truncated=output.truncated,
         )
+
     finally:
-        # Destroy the remote sandbox even when writing or execution fails.
+        # Always attempt to destroy the remote sandbox.
         if sandbox is not None:
             await sandbox.destroy()
 
 
 def main() -> None:
-    """CLI entry point for the initial execution service."""
+    """CLI entry point for direct Python execution."""
 
     parser = argparse.ArgumentParser(
         description="Execute one Python file through OpenSandbox."
     )
-    parser.add_argument("submission", help="Path to a .py file")
+
+    parser.add_argument(
+        "submission",
+        help="Path to a .py file",
+    )
+
     parser.add_argument(
         "--timeout",
         type=int,
         default=DEFAULT_TIMEOUT_SECONDS,
-        help="Execution deadline in seconds (1-120)",
+        help=f"Execution deadline in seconds (1-{MAX_TIMEOUT_SECONDS})",
     )
+
+    parser.add_argument(
+        "--cpu",
+        default=DEFAULT_CPU,
+        help="CPU limit, e.g. 250m, 500m or 1",
+    )
+
+    parser.add_argument(
+        "--memory",
+        default=DEFAULT_MEMORY,
+        help="Memory limit, e.g. 128Mi, 512Mi or 1Gi",
+    )
+
+    parser.add_argument(
+        "--max-output",
+        type=parse_output_size,
+        default=DEFAULT_MAX_OUTPUT_BYTES,
+        help="Maximum combined stdout/stderr output, e.g. 64KiB or 1MiB",
+    )
+
     args = parser.parse_args()
 
     try:
         result = asyncio.run(
-            run_python_file(args.submission, args.timeout)
+            run_python_file(
+                args.submission,
+                timeout_seconds=args.timeout,
+                cpu=args.cpu,
+                memory=args.memory,
+                max_output_bytes=args.max_output,
+            )
         )
+
     except (OSError, SubmissionValidationError, ValueError) as exc:
         parser.error(str(exc))
         return

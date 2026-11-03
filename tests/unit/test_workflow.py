@@ -34,7 +34,7 @@ def make_result(exit_code, timed_out=False):
 async def test_workflow_success(valid_submission, monkeypatch):
     """A successful sandbox execution should produce succeeded status."""
 
-    async def fake_run(path, timeout_seconds):
+    async def fake_run(path, timeout_seconds, **_kwargs):
         return make_result(exit_code=0)
 
     monkeypatch.setattr(
@@ -56,7 +56,7 @@ async def test_workflow_success(valid_submission, monkeypatch):
 async def test_workflow_nonzero_exit(valid_submission, monkeypatch):
     """A nonzero program exit should produce failed status."""
 
-    async def fake_run(path, timeout_seconds):
+    async def fake_run(path, timeout_seconds, **_kwargs):
         return make_result(exit_code=7)
 
     monkeypatch.setattr(
@@ -75,7 +75,7 @@ async def test_workflow_nonzero_exit(valid_submission, monkeypatch):
 async def test_workflow_timeout(valid_submission, monkeypatch):
     """A timed-out execution should produce timed_out status."""
 
-    async def fake_run(path, timeout_seconds):
+    async def fake_run(path, timeout_seconds, **_kwargs):
         return make_result(exit_code=None, timed_out=True)
 
     monkeypatch.setattr(
@@ -97,7 +97,7 @@ async def test_workflow_validation_failure(tmp_path, monkeypatch):
     path = tmp_path / "submission.txt"
     path.write_text("invalid submission", encoding="utf-8")
 
-    async def fake_run(path, timeout_seconds):
+    async def fake_run(path, timeout_seconds, **_kwargs):
         raise AssertionError("Sandbox must not be invoked")
 
     monkeypatch.setattr(
@@ -117,7 +117,7 @@ async def test_workflow_validation_failure(tmp_path, monkeypatch):
 async def test_workflow_invalid_timeout(valid_submission, monkeypatch):
     """An invalid timeout should prevent sandbox execution."""
 
-    async def fake_run(path, timeout_seconds):
+    async def fake_run(path, timeout_seconds, **_kwargs):
         raise AssertionError("Sandbox must not be invoked")
 
     monkeypatch.setattr(
@@ -142,7 +142,7 @@ async def test_workflow_propagates_infrastructure_error(
 ):
     """Unexpected infrastructure errors should propagate."""
 
-    async def fake_run(path, timeout_seconds):
+    async def fake_run(path, timeout_seconds, **_kwargs):
         raise ConnectionError("OpenSandbox server unavailable")
 
     monkeypatch.setattr(
@@ -166,7 +166,7 @@ async def test_workflow_generates_execution_id(
 ):
     """Workflow should generate a valid UUID automatically."""
 
-    async def fake_run(path, timeout_seconds):
+    async def fake_run(path, timeout_seconds, **_kwargs):
         return make_result(exit_code=0)
 
     monkeypatch.setattr(
@@ -188,7 +188,7 @@ async def test_workflow_preserves_supplied_execution_id(
 ):
     """Workflow should preserve a platform-supplied execution ID."""
 
-    async def fake_run(path, timeout_seconds):
+    async def fake_run(path, timeout_seconds, **_kwargs):
         return make_result(exit_code=0)
 
     monkeypatch.setattr(
@@ -217,3 +217,47 @@ async def test_workflow_rejects_empty_execution_id(valid_submission):
             valid_submission,
             execution_id=" ",
         )
+
+@pytest.mark.asyncio
+async def test_workflow_passes_resource_limits(
+    valid_submission,
+    monkeypatch,
+):
+    """Workflow should pass resource limits to the execution runner."""
+
+    received = {}
+
+    async def fake_run(
+        path,
+        timeout_seconds,
+        *,
+        cpu,
+        memory,
+        max_output_bytes,
+    ):
+        received["cpu"] = cpu
+        received["memory"] = memory
+        received["max_output_bytes"] = max_output_bytes
+
+        return make_result(exit_code=0)
+
+    monkeypatch.setattr(
+        workflow_module.runner,
+        "run_python_file",
+        fake_run,
+    )
+
+    result = await workflow_module.run_workflow(
+        valid_submission,
+        cpu="1",
+        memory="1Gi",
+        max_output_bytes=64 * 1024,
+    )
+
+    assert result["status"] == "succeeded"
+
+    assert received == {
+        "cpu": "1",
+        "memory": "1Gi",
+        "max_output_bytes": 64 * 1024,
+    }

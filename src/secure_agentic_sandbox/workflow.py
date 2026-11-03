@@ -1,4 +1,4 @@
-"""Initial platform-defined LangGraph workflow."""
+"""Platform-defined LangGraph execution workflow."""
 
 from __future__ import annotations
 
@@ -10,6 +10,12 @@ from uuid import uuid4
 from langgraph.graph import END, START, StateGraph
 
 from secure_agentic_sandbox import runner
+from secure_agentic_sandbox.execution_config import (
+    DEFAULT_CPU,
+    DEFAULT_MAX_OUTPUT_BYTES,
+    DEFAULT_MEMORY,
+    ExecutionConfig,
+)
 
 WorkflowStatus = Literal[
     "pending",
@@ -26,31 +32,27 @@ class WorkflowState(TypedDict):
     execution_id: str
     submission_path: str
     timeout_seconds: int
+    cpu: str
+    memory: str
+    max_output_bytes: int
     validation_error: str | None
     execution_result: dict[str, object] | None
     status: WorkflowStatus
 
 
 def validate_submission(state: WorkflowState) -> dict[str, object]:
-    """Validate the submitted Python file before execution."""
-
-    timeout = state["timeout_seconds"]
-
-    if (
-        not isinstance(timeout, int)
-        or isinstance(timeout, bool)
-        or not 1 <= timeout <= runner.MAX_TIMEOUT_SECONDS
-    ):
-        return {
-            "validation_error": (
-                f"Timeout must be between 1 and "
-                f"{runner.MAX_TIMEOUT_SECONDS} seconds."
-            ),
-            "status": "validation_failed",
-        }
+    """Validate submission and its resource configuration."""
 
     try:
+        ExecutionConfig(
+            cpu=state["cpu"],
+            memory=state["memory"],
+            timeout_seconds=state["timeout_seconds"],
+            max_output_bytes=state["max_output_bytes"],
+        )
+
         runner.load_python_source(state["submission_path"])
+
     except (OSError, ValueError) as exc:
         return {
             "validation_error": str(exc),
@@ -63,7 +65,7 @@ def validate_submission(state: WorkflowState) -> dict[str, object]:
 def route_after_validation(
     state: WorkflowState,
 ) -> Literal["execute", "finish"]:
-    """Skip execution when submission validation fails."""
+    """Skip execution when validation fails."""
 
     if state["validation_error"] is not None:
         return "finish"
@@ -74,11 +76,14 @@ def route_after_validation(
 async def execute_submission(
     state: WorkflowState,
 ) -> dict[str, object]:
-    """Execute submitted code through the existing sandbox runner."""
+    """Execute submitted code through the sandbox runner."""
 
     result = await runner.run_python_file(
         state["submission_path"],
         timeout_seconds=state["timeout_seconds"],
+        cpu=state["cpu"],
+        memory=state["memory"],
+        max_output_bytes=state["max_output_bytes"],
     )
 
     return {
@@ -139,6 +144,9 @@ async def run_workflow(
     timeout_seconds: int = runner.DEFAULT_TIMEOUT_SECONDS,
     *,
     execution_id: str | None = None,
+    cpu: str = DEFAULT_CPU,
+    memory: str = DEFAULT_MEMORY,
+    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
 ) -> WorkflowState:
     """Create and execute one platform-managed workflow instance."""
 
@@ -151,6 +159,9 @@ async def run_workflow(
         "execution_id": execution_id,
         "submission_path": str(submission_path),
         "timeout_seconds": timeout_seconds,
+        "cpu": cpu,
+        "memory": memory,
+        "max_output_bytes": max_output_bytes,
         "validation_error": None,
         "execution_result": None,
         "status": "pending",

@@ -6,6 +6,14 @@ import argparse
 import asyncio
 import json
 
+from secure_agentic_sandbox.execution_config import (
+    DEFAULT_CPU,
+    DEFAULT_MAX_OUTPUT_BYTES,
+    DEFAULT_MEMORY,
+    DEFAULT_TIMEOUT_SECONDS,
+    MAX_TIMEOUT_SECONDS,
+    parse_output_size,
+)
 from secure_agentic_sandbox.workflow import run_workflow
 
 
@@ -24,8 +32,27 @@ def main() -> None:
     parser.add_argument(
         "--timeout",
         type=int,
-        default=10,
-        help="Maximum execution time in seconds (default: 10).",
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help=f"Execution timeout in seconds (1-{MAX_TIMEOUT_SECONDS}).",
+    )
+
+    parser.add_argument(
+        "--cpu",
+        default=DEFAULT_CPU,
+        help="CPU limit, e.g. 250m, 500m or 1.",
+    )
+
+    parser.add_argument(
+        "--memory",
+        default=DEFAULT_MEMORY,
+        help="Memory limit, e.g. 128Mi, 512Mi or 1Gi.",
+    )
+
+    parser.add_argument(
+        "--max-output",
+        type=parse_output_size,
+        default=DEFAULT_MAX_OUTPUT_BYTES,
+        help="Combined stdout/stderr limit, e.g. 64KiB or 1MiB.",
     )
 
     parser.add_argument(
@@ -41,6 +68,9 @@ def main() -> None:
             submission_path=args.submission,
             timeout_seconds=args.timeout,
             execution_id=args.execution_id,
+            cpu=args.cpu,
+            memory=args.memory,
+            max_output_bytes=args.max_output,
         )
     )
 
