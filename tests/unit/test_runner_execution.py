@@ -198,3 +198,121 @@ def test_output_preserves_newlines_and_partial_chunks(
     assert result.stdout == "".join(stdout_events)
     assert result.stderr == "".join(stderr_events)
     assert sandbox.destroy_calls == 1
+
+
+def test_upload_failure_still_cleans_up(
+    tmp_path, monkeypatch
+):
+    sandbox = FakeSandbox(FakeCommands())
+    install_fake_sandbox(monkeypatch, sandbox)
+
+    async def fail_upload(entries):
+        raise RuntimeError("simulated upload failure")
+
+    monkeypatch.setattr(
+        sandbox.files,
+        "write_files",
+        fail_upload,
+    )
+
+    with pytest.raises(RuntimeError, match="simulated upload failure"):
+        asyncio.run(
+            runner.run_python_file(make_submission(tmp_path))
+        )
+
+    assert sandbox.destroy_calls == 1
+
+
+def test_destroy_failure_is_reported(
+    tmp_path, monkeypatch
+):
+    sandbox = FakeSandbox(FakeCommands())
+
+    async def fail_destroy():
+        sandbox.destroy_calls += 1
+        raise RuntimeError("simulated destroy failure")
+
+    monkeypatch.setattr(sandbox, "destroy", fail_destroy)
+    install_fake_sandbox(monkeypatch, sandbox)
+
+    with pytest.raises(
+        RuntimeError, match="simulated destroy failure"
+    ):
+        asyncio.run(
+            runner.run_python_file(make_submission(tmp_path))
+        )
+
+    assert sandbox.destroy_calls == 1
+
+
+def test_upload_error_preserved_when_destroy_also_fails(
+    tmp_path, monkeypatch
+):
+    sandbox = FakeSandbox(FakeCommands())
+
+    async def fail_upload(entries):
+        raise RuntimeError("simulated upload failure")
+
+    async def fail_destroy():
+        sandbox.destroy_calls += 1
+        raise RuntimeError("simulated destroy failure")
+
+    monkeypatch.setattr(
+        sandbox.files, "write_files", fail_upload
+    )
+    monkeypatch.setattr(
+        sandbox, "destroy", fail_destroy
+    )
+
+    install_fake_sandbox(monkeypatch, sandbox)
+
+    with pytest.raises(
+        RuntimeError, match="simulated upload failure"
+    ) as exc_info:
+        asyncio.run(
+            runner.run_python_file(make_submission(tmp_path))
+        )
+
+    assert sandbox.destroy_calls == 1
+    assert any(
+        "simulated destroy failure" in note
+        for note in exc_info.value.__notes__
+    )
+
+def test_runner_passes_resource_limits_to_sandbox_create(
+    tmp_path, monkeypatch
+):
+    sandbox = FakeSandbox(FakeCommands())
+    received = {}
+
+    async def fake_create(*args, **kwargs):
+        received.update(kwargs)
+        return sandbox
+
+    monkeypatch.setattr(
+        runner.Sandbox,
+        "create",
+        fake_create,
+    )
+    monkeypatch.setattr(
+        runner,
+        "make_connection_config",
+        lambda: object(),
+    )
+
+    result = asyncio.run(
+        runner.run_python_file(
+            make_submission(tmp_path),
+            cpu="750m",
+            memory="768Mi",
+            max_output_bytes=64 * 1024,
+        )
+    )
+
+    assert received["resource"] == {
+        "cpu": "750m",
+        "memory": "768Mi",
+    }
+
+    assert sandbox.destroy_calls == 1
+    assert result.exit_code == 0

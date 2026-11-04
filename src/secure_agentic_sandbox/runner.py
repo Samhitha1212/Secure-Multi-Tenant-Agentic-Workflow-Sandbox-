@@ -1,4 +1,3 @@
-
 """Python execution service using OpenSandbox."""
 
 from __future__ import annotations
@@ -14,6 +13,7 @@ from pathlib import Path
 
 from opensandbox import Sandbox
 from opensandbox.config import ConnectionConfig
+from opensandbox.exceptions import SandboxException
 from opensandbox.models import WriteEntry
 from opensandbox.models.execd import ExecutionHandlers
 
@@ -48,6 +48,7 @@ class ExecutionResult:
     timed_out: bool
     duration_seconds: float
     output_truncated: bool = False
+    oom_killed: bool = False
 
 
 @dataclass
@@ -55,10 +56,8 @@ class BoundedOutputCollector:
     """Collect stdout and stderr within one shared byte limit."""
 
     max_bytes: int
-
     stdout_chunks: list[str] = field(default_factory=list)
     stderr_chunks: list[str] = field(default_factory=list)
-
     bytes_used: int = 0
     truncated: bool = False
 
@@ -167,10 +166,33 @@ def make_connection_config() -> ConnectionConfig:
     }
 
     api_key = os.getenv("OPEN_SANDBOX_API_KEY")
+
     if api_key:
         kwargs["api_key"] = api_key
 
     return ConnectionConfig(**kwargs)
+
+
+async def _sandbox_was_oom_killed(sandbox: Sandbox) -> bool:
+    """Return True only when OpenSandbox explicitly reports a Docker OOM kill.
+
+    Diagnostics are best-effort. If the diagnostics API is unavailable or
+    returns an unexpected response, the caller retains the original timeout
+    or non-zero-exit classification.
+    """
+
+    try:
+        events = await sandbox.get_diagnostic_events("runtime")
+    except (SandboxException, AttributeError):
+        # AttributeError also covers older SDKs and lightweight test doubles
+        # that do not expose the diagnostics method.
+        return False
+
+    content = events.content or ""
+    return (
+        "OOMKilled - container was killed due to out-of-memory"
+        in content
+    )
 
 
 async def run_python_file(
@@ -192,7 +214,9 @@ async def run_python_file(
     )
 
     source = load_python_source(submission_path)
+
     sandbox: Sandbox | None = None
+    primary_error: BaseException | None = None
 
     try:
         sandbox = await Sandbox.create(
@@ -246,6 +270,25 @@ async def run_python_file(
             )
 
         except TimeoutError:
+            # Inspect diagnostics before the finally block destroys the sandbox.
+            oom_killed = await _sandbox_was_oom_killed(sandbox)
+
+            if oom_killed:
+                return ExecutionResult(
+                    sandbox_id=sandbox.id,
+                    stdout=output.stdout,
+                    stderr=(
+                        output.stderr
+                        + "Sandbox was terminated by the OOM killer "
+                        "(memory limit exceeded)."
+                    ),
+                    exit_code=137,
+                    timed_out=False,
+                    duration_seconds=time.monotonic() - started,
+                    output_truncated=output.truncated,
+                    oom_killed=True,
+                )
+
             return ExecutionResult(
                 sandbox_id=sandbox.id,
                 stdout=output.stdout,
@@ -260,6 +303,30 @@ async def run_python_file(
                 timed_out=True,
                 duration_seconds=time.monotonic() - started,
                 output_truncated=output.truncated,
+                oom_killed=False,
+            )
+
+        # A command can also finish with a non-zero exit code before the
+        # client-side timeout. Check diagnostics for explicit OOM evidence.
+        oom_killed = (
+            execution.exit_code != 0
+            and await _sandbox_was_oom_killed(sandbox)
+        )
+
+        if oom_killed:
+            return ExecutionResult(
+                sandbox_id=sandbox.id,
+                stdout=output.stdout,
+                stderr=(
+                    output.stderr
+                    + "Sandbox was terminated by the OOM killer "
+                    "(memory limit exceeded)."
+                ),
+                exit_code=137,
+                timed_out=False,
+                duration_seconds=time.monotonic() - started,
+                output_truncated=output.truncated,
+                oom_killed=True,
             )
 
         return ExecutionResult(
@@ -270,12 +337,32 @@ async def run_python_file(
             timed_out=False,
             duration_seconds=time.monotonic() - started,
             output_truncated=output.truncated,
+            oom_killed=False,
         )
+
+    except BaseException as exc:
+        # Preserve the original execution/upload/cancellation error.
+        primary_error = exc
+        raise
 
     finally:
         # Always attempt to destroy the remote sandbox.
         if sandbox is not None:
-            await sandbox.destroy()
+            try:
+                await sandbox.destroy()
+
+            except Exception as cleanup_error:
+                if primary_error is None:
+                    # Execution succeeded, but cleanup failed.
+                    # Do not silently report success.
+                    raise
+
+                # Preserve the original exception and attach
+                # the cleanup failure as additional diagnostic info.
+                primary_error.add_note(
+                    "Sandbox cleanup also failed: "
+                    f"{cleanup_error!r}"
+                )
 
 
 def main() -> None:

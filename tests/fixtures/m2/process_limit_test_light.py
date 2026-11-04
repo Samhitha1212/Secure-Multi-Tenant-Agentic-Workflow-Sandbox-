@@ -1,4 +1,3 @@
-import errno
 import subprocess
 from pathlib import Path
 

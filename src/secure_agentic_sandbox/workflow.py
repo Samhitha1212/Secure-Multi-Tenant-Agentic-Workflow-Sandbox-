@@ -23,6 +23,7 @@ WorkflowStatus = Literal[
     "succeeded",
     "failed",
     "timed_out",
+    "resource_exhausted",
 ]
 
 
@@ -100,6 +101,10 @@ def classify_execution(
 
     if result is None:
         return {"status": "failed"}
+
+    # A confirmed OOM kill takes precedence over timeout.
+    if result.get("oom_killed") is True:
+        return {"status": "resource_exhausted"}
 
     if result["timed_out"]:
         return {"status": "timed_out"}

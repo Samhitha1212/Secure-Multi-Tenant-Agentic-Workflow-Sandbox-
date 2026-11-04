@@ -1,0 +1,849 @@
+Waiting for memory test sandbox...
+Container: 63d02bf7a6a5
+Runtime=runsc Memory=536870912 MemorySwap=1073741824 NanoCpus=500000000
+Cgroup: /sys/fs/cgroup/system.slice/docker-63d02bf7a6a5653f25b8bcbe23162b518e575f36f7a1d438ca8bf8b7df4a890b.scope
+=== memory.max ===
+536870912
+=== memory.swap.max ===
+536870912
+--- Sample 1 ---
+memory.current: 14622720
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 2 ---
+memory.current: 20283392
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 3 ---
+memory.current: 23842816
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 4 ---
+memory.current: 34013184
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 5 ---
+memory.current: 42156032
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 6 ---
+memory.current: 50610176
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 7 ---
+memory.current: 59310080
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 8 ---
+memory.current: 67477504
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 9 ---
+memory.current: 77025280
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 10 ---
+memory.current: 85716992
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 11 ---
+memory.current: 93892608
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 12 ---
+memory.current: 102330368
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 13 ---
+memory.current: 115224576
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 14 ---
+memory.current: 128188416
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 15 ---
+memory.current: 136159232
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 16 ---
+memory.current: 144572416
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 17 ---
+memory.current: 152784896
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 18 ---
+memory.current: 161968128
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 19 ---
+memory.current: 170184704
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 20 ---
+memory.current: 178372608
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 21 ---
+memory.current: 186814464
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 22 ---
+memory.current: 195469312
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 23 ---
+memory.current: 203964416
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 24 ---
+memory.current: 212123648
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 25 ---
+memory.current: 220561408
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 26 ---
+memory.current: 228999168
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 27 ---
+memory.current: 237187072
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 28 ---
+memory.current: 245878784
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 29 ---
+memory.current: 254574592
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 30 ---
+memory.current: 262504448
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 31 ---
+memory.current: 271212544
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 32 ---
+memory.current: 280436736
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 33 ---
+memory.current: 288354304
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 34 ---
+memory.current: 297009152
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 35 ---
+memory.current: 304979968
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 36 ---
+memory.current: 313421824
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 37 ---
+memory.current: 321593344
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 38 ---
+memory.current: 330514432
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 39 ---
+memory.current: 338952192
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 40 ---
+memory.current: 347930624
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 41 ---
+memory.current: 355581952
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 42 ---
+memory.current: 364539904
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 43 ---
+memory.current: 372203520
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 44 ---
+memory.current: 381165568
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 45 ---
+memory.current: 389337088
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 46 ---
+memory.current: 397512704
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 47 ---
+memory.current: 405958656
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 48 ---
+memory.current: 414924800
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 49 ---
+memory.current: 422842368
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 50 ---
+memory.current: 431804416
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 51 ---
+memory.current: 440516608
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 52 ---
+memory.current: 448438272
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 53 ---
+memory.current: 456871936
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 54 ---
+memory.current: 465567744
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 55 ---
+memory.current: 473780224
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 56 ---
+memory.current: 482226176
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 57 ---
+memory.current: 490393600
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 58 ---
+memory.current: 499355648
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 59 ---
+memory.current: 507797504
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 60 ---
+memory.current: 515715072
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 61 ---
+memory.current: 524681216
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 62 ---
+memory.current: 532611072
+memory.swap.current: 0
+memory.events:
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 63 ---
+memory.current: 536215552
+memory.swap.current: 5083136
+memory.events:
+low 0
+high 0
+max 15
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 64 ---
+memory.current: 536735744
+memory.swap.current: 12996608
+memory.events:
+low 0
+high 0
+max 45
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 65 ---
+memory.current: 536739840
+memory.swap.current: 22122496
+memory.events:
+low 0
+high 0
+max 78
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 66 ---
+memory.current: 536637440
+memory.swap.current: 30658560
+memory.events:
+low 0
+high 0
+max 109
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 67 ---
+memory.current: 536723456
+memory.swap.current: 39243776
+memory.events:
+low 0
+high 0
+max 139
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 68 ---
+memory.current: 536645632
+memory.swap.current: 48832512
+memory.events:
+low 0
+high 0
+max 174
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 69 ---
+memory.current: 536510464
+memory.swap.current: 57229312
+memory.events:
+low 0
+high 0
+max 210
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 70 ---
+memory.current: 535511040
+memory.swap.current: 75677696
+memory.events:
+low 0
+high 0
+max 236
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 71 ---
+memory.current: 536395776
+memory.swap.current: 75677696
+memory.events:
+low 0
+high 0
+max 264
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 72 ---
+memory.current: 536748032
+memory.swap.current: 82247680
+memory.events:
+low 0
+high 0
+max 297
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 73 ---
+memory.current: 536686592
+memory.swap.current: 90767360
+memory.events:
+low 0
+high 0
+max 330
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 74 ---
+memory.current: 536797184
+memory.swap.current: 99426304
+memory.events:
+low 0
+high 0
+max 363
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 75 ---
+memory.current: 536825856
+memory.swap.current: 107905024
+memory.events:
+low 0
+high 0
+max 391
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 76 ---
+memory.current: 536608768
+memory.swap.current: 117579776
+memory.events:
+low 0
+high 0
+max 425
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 77 ---
+memory.current: 536641536
+memory.swap.current: 125579264
+memory.events:
+low 0
+high 0
+max 459
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 78 ---
+memory.current: 536707072
+memory.swap.current: 134090752
+memory.events:
+low 0
+high 0
+max 492
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 79 ---
+memory.current: 536821760
+memory.swap.current: 142589952
+memory.events:
+low 0
+high 0
+max 525
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 80 ---
+memory.current: 536825856
+memory.swap.current: 148746240
+memory.events:
+low 0
+high 0
+max 562
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 81 ---
+memory.current: 536231936
+memory.swap.current: 158117888
+memory.events:
+low 0
+high 0
+max 598
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 82 ---
+memory.current: 536375296
+memory.swap.current: 166121472
+memory.events:
+low 0
+high 0
+max 627
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 83 ---
+memory.current: 354045952
+memory.swap.current: 106639360
+memory.events:
+low 0
+high 0
+max 635
+oom 0
+oom_kill 0
+oom_group_kill 0
+--- Sample 84 ---
+memory.current: 9011200
+memory.swap.current: 15851520
+memory.events:
+low 0
+high 0
+max 635
+oom 0
+oom_kill 0
+oom_group_kill 0
+Cgroup removed; monitoring complete.

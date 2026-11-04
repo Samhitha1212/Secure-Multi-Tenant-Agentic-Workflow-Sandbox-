@@ -81,6 +81,9 @@ def main() -> None:
     if status == "succeeded":
         return
 
+    if status == "resource_exhausted":
+        raise SystemExit(137)
+
     if status == "timed_out":
         raise SystemExit(124)
 

@@ -261,3 +261,76 @@ async def test_workflow_passes_resource_limits(
         "memory": "1Gi",
         "max_output_bytes": 64 * 1024,
     }
+
+@pytest.mark.asyncio
+async def test_workflow_invalid_cpu(valid_submission, monkeypatch):
+    """Invalid CPU configuration should prevent sandbox execution."""
+
+    async def fake_run(path, timeout_seconds, **_kwargs):
+        raise AssertionError("Sandbox must not be invoked")
+
+    monkeypatch.setattr(
+        workflow_module.runner,
+        "run_python_file",
+        fake_run,
+    )
+
+    result = await workflow_module.run_workflow(
+        valid_submission,
+        cpu="50m",
+    )
+
+    assert result["status"] == "validation_failed"
+    assert "CPU must be between 100m and 2000m" in (
+        result["validation_error"]
+    )
+    assert result["execution_result"] is None
+
+@pytest.mark.asyncio
+async def test_workflow_invalid_memory(valid_submission, monkeypatch):
+    """Invalid memory configuration should prevent sandbox execution."""
+
+    async def fake_run(path, timeout_seconds, **_kwargs):
+        raise AssertionError("Sandbox must not be invoked")
+
+    monkeypatch.setattr(
+        workflow_module.runner,
+        "run_python_file",
+        fake_run,
+    )
+
+    result = await workflow_module.run_workflow(
+        valid_submission,
+        memory="32Mi",
+    )
+
+    assert result["status"] == "validation_failed"
+    assert "Memory must be between 64Mi and 2Gi" in (
+        result["validation_error"]
+    )
+    assert result["execution_result"] is None
+
+
+@pytest.mark.asyncio
+async def test_workflow_invalid_output_limit(valid_submission, monkeypatch):
+    """Invalid output limit should prevent sandbox execution."""
+
+    async def fake_run(path, timeout_seconds, **_kwargs):
+        raise AssertionError("Sandbox must not be invoked")
+
+    monkeypatch.setattr(
+        workflow_module.runner,
+        "run_python_file",
+        fake_run,
+    )
+
+    result = await workflow_module.run_workflow(
+        valid_submission,
+        max_output_bytes=512,
+    )
+
+    assert result["status"] == "validation_failed"
+    assert "Output limit must be between 1KiB and 10MiB" in (
+        result["validation_error"]
+    )
+    assert result["execution_result"] is None
