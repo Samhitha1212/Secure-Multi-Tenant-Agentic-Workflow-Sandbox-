@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import time
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -29,8 +30,12 @@ from secure_agentic_sandbox.execution_config import (
 
 PYTHON_IMAGE = "python:3.11"
 SANDBOX_FILE = "/tmp/submission.py"
+SANDBOX_INPUT_FILE = "/tmp/workflow_input.json"
 
 MAX_SOURCE_BYTES = 128 * 1024
+MAX_WORKFLOW_INPUT_BYTES = 64 * 1024
+MAX_WORKFLOW_OUTPUT_BYTES = 64 * 1024
+SANDBOX_OUTPUT_FILE = "/tmp/workflow_output.json"
 
 
 class SubmissionValidationError(ValueError):
@@ -49,6 +54,7 @@ class ExecutionResult:
     duration_seconds: float
     output_truncated: bool = False
     oom_killed: bool = False
+    output: dict[str, object] | None = None
 
 
 @dataclass
@@ -152,6 +158,86 @@ def load_python_source(path: str | Path) -> str:
     return source
 
 
+def validate_python_source(source: str) -> str:
+    """Validate inline Python source before creating a sandbox."""
+
+    if not isinstance(source, str):
+        raise SubmissionValidationError(
+            "Python source must be a string."
+        )
+
+    try:
+        encoded_source = source.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise SubmissionValidationError(
+            "The Python source must be valid UTF-8."
+        ) from exc
+
+    if len(encoded_source) > MAX_SOURCE_BYTES:
+        raise SubmissionValidationError(
+            f"Source file exceeds the {MAX_SOURCE_BYTES}-byte limit."
+        )
+
+    return source
+
+
+
+def _validate_json_value(value: object) -> None:
+    """Reject values that cannot be represented as strict JSON."""
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError("JSON object keys must be strings.")
+            _validate_json_value(item)
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            _validate_json_value(item)
+        return
+
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return
+
+    raise TypeError("Value is not JSON-compatible.")
+
+
+def serialize_workflow_input(
+    input_data: Mapping[str, object] | None,
+) -> str | None:
+    """Validate and serialize selected previous-step results."""
+
+    if input_data is None:
+        return None
+
+    if not isinstance(input_data, Mapping):
+        raise SubmissionValidationError(
+            "Workflow input must be a JSON object."
+        )
+
+    try:
+        _validate_json_value(input_data)
+        serialized = json.dumps(
+            dict(input_data),
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise SubmissionValidationError(
+            "Workflow input must contain JSON-compatible values."
+        ) from exc
+
+    if len(serialized.encode("utf-8")) > MAX_WORKFLOW_INPUT_BYTES:
+        raise SubmissionValidationError(
+            f"Workflow input exceeds the {MAX_WORKFLOW_INPUT_BYTES}-byte limit."
+        )
+
+    return serialized
+
+
+
 def make_connection_config() -> ConnectionConfig:
     """Build the local OpenSandbox client configuration."""
 
@@ -195,25 +281,67 @@ async def _sandbox_was_oom_killed(sandbox: Sandbox) -> bool:
     )
 
 
-async def run_python_file(
-    submission_path: str | Path,
-    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
-    *,
-    cpu: str = DEFAULT_CPU,
-    memory: str = DEFAULT_MEMORY,
-    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
-) -> ExecutionResult:
-    """Run one Python file in a disposable OpenSandbox sandbox."""
 
-    # Validate all resource settings before creating a sandbox.
-    execution_config = ExecutionConfig(
-        cpu=cpu,
-        memory=memory,
-        timeout_seconds=timeout_seconds,
-        max_output_bytes=max_output_bytes,
+async def _read_workflow_output(
+    sandbox: Sandbox,
+) -> dict[str, object]:
+    """Read and validate bounded JSON output from the sandbox."""
+
+    stream = await sandbox.files.read_bytes_stream(
+        SANDBOX_OUTPUT_FILE,
+        chunk_size=16 * 1024,
     )
 
-    source = load_python_source(submission_path)
+    chunks: list[bytes] = []
+    total_bytes = 0
+
+    try:
+        async for chunk in stream:
+            if not isinstance(chunk, bytes):
+                raise SubmissionValidationError(
+                    "Sandbox workflow output must be binary data."
+                )
+
+            total_bytes += len(chunk)
+
+            if total_bytes > MAX_WORKFLOW_OUTPUT_BYTES:
+                raise SubmissionValidationError(
+                    "Workflow output exceeds the "
+                    f"{MAX_WORKFLOW_OUTPUT_BYTES}-byte limit."
+                )
+
+            chunks.append(chunk)
+    finally:
+        await stream.aclose()
+
+    def reject_nonstandard_constant(value: str) -> None:
+        raise ValueError(f"Invalid JSON constant: {value}")
+
+    try:
+        decoded = b"".join(chunks).decode("utf-8")
+        payload = json.loads(
+            decoded,
+            parse_constant=reject_nonstandard_constant,
+        )
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
+        raise SubmissionValidationError(
+            "Sandbox workflow output must be valid UTF-8 JSON."
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise SubmissionValidationError(
+            "Sandbox workflow output must be a JSON object."
+        )
+
+    return payload
+
+
+async def _execute_python_source(
+    source: str,
+    execution_config: ExecutionConfig,
+    input_data_json: str | None = None,
+) -> ExecutionResult:
+    """Execute validated Python source in a disposable sandbox."""
 
     sandbox: Sandbox | None = None
     primary_error: BaseException | None = None
@@ -232,15 +360,34 @@ async def run_python_file(
             metadata={"purpose": "python-execution"},
         )
 
-        await sandbox.files.write_files(
-            [
+        write_entries = [
+            WriteEntry(
+                path=SANDBOX_FILE,
+                data=source,
+                mode=0o644,
+            )
+        ]
+
+        if input_data_json is not None:
+            write_entries.append(
                 WriteEntry(
-                    path=SANDBOX_FILE,
-                    data=source,
-                    mode=0o644,
+                    path=SANDBOX_INPUT_FILE,
+                    data=input_data_json,
+                    mode=0o600,
                 )
-            ]
-        )
+            )
+
+        # Structured output is enabled only for workflow executions.
+        if input_data_json is not None:
+            write_entries.append(
+                WriteEntry(
+                    path=SANDBOX_OUTPUT_FILE,
+                    data="{}",
+                    mode=0o600,
+                )
+            )
+
+        await sandbox.files.write_files(write_entries)
 
         # stdout and stderr share one output budget.
         output = BoundedOutputCollector(
@@ -329,6 +476,11 @@ async def run_python_file(
                 oom_killed=True,
             )
 
+        structured_output = None
+
+        if input_data_json is not None and execution.exit_code == 0:
+            structured_output = await _read_workflow_output(sandbox)
+
         return ExecutionResult(
             sandbox_id=sandbox.id,
             stdout=output.stdout,
@@ -338,6 +490,7 @@ async def run_python_file(
             duration_seconds=time.monotonic() - started,
             output_truncated=output.truncated,
             oom_killed=False,
+            output=structured_output,
         )
 
     except BaseException as exc:
@@ -363,6 +516,63 @@ async def run_python_file(
                     "Sandbox cleanup also failed: "
                     f"{cleanup_error!r}"
                 )
+
+
+
+async def run_python_file(
+    submission_path: str | Path,
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    *,
+    cpu: str = DEFAULT_CPU,
+    memory: str = DEFAULT_MEMORY,
+    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+) -> ExecutionResult:
+    """Run one Python file in a disposable OpenSandbox sandbox."""
+
+    execution_config = ExecutionConfig(
+        cpu=cpu,
+        memory=memory,
+        timeout_seconds=timeout_seconds,
+        max_output_bytes=max_output_bytes,
+    )
+
+    source = load_python_source(submission_path)
+
+    return await _execute_python_source(source, execution_config)
+
+
+async def run_python_source(
+    source: str,
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    *,
+    cpu: str = DEFAULT_CPU,
+    memory: str = DEFAULT_MEMORY,
+    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+    input_data: Mapping[str, object] | None = None,
+) -> ExecutionResult:
+    """Run inline Python source in a disposable OpenSandbox sandbox."""
+
+    execution_config = ExecutionConfig(
+        cpu=cpu,
+        memory=memory,
+        timeout_seconds=timeout_seconds,
+        max_output_bytes=max_output_bytes,
+    )
+
+    validated_source = validate_python_source(source)
+    serialized_input = serialize_workflow_input(input_data)
+
+    if serialized_input is None:
+        return await _execute_python_source(
+            validated_source,
+            execution_config,
+        )
+
+    return await _execute_python_source(
+        validated_source,
+        execution_config,
+        serialized_input,
+    )
 
 
 def main() -> None:

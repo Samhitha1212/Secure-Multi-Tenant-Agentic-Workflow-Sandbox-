@@ -92,3 +92,40 @@ unit tests and the complete project regression suite.
 The implementation demonstrates execution-scoped authorization,
 controlled tool invocation, inventory reservation, idempotency,
 concurrency safety, and audit logging.
+## 9. Trusted LangGraph Tool Integration
+
+**Implementation:** `src/secure_agentic_sandbox/tool_workflow.py`
+
+**Tests:** `tests/unit/test_tool_workflow.py`
+
+Implemented a separate LangGraph workflow for trusted tool invocation.
+
+The workflow:
+- Receives a tool name and arguments.
+- Invokes the registered tool through ToolBroker.
+- Uses tenant identity and execution identity supplied by the trusted controller.
+- Keeps the grant token and trusted context outside the LangGraph state.
+- Returns the authorized tool result to the graph.
+
+### Integration Tests
+
+| Test | What it verifies |
+|---|---|
+| Inventory lookup through LangGraph | Trusted graph can invoke inventory lookup. |
+| Inventory reservation through LangGraph | Trusted graph can invoke inventory reservation. |
+| Context override prevention | Untrusted graph input cannot override trusted identity or grant credentials. |
+| Cross-execution grant rejection | A grant belonging to another execution is rejected. |
+| Tool scope enforcement | A tool outside the grant's allowed scope is rejected. |
+
+### Validation
+
+- New LangGraph tool integration tests: 5 passed.
+- Full project Ruff checks: Passed.
+- Full project pytest suite: Passed.
+- `git diff --check`: Passed.
+
+### Remaining Work
+
+The standalone trusted tool workflow is implemented and tested.
+
+Composition with the main Python execution workflow and support for user-defined declarative workflows remain future integration tasks.
