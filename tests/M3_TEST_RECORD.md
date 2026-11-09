@@ -1,6 +1,6 @@
 # M3 - Secure Tool Broker Test Record
 
-**Date:** 2026-11-14
+**Date:** 2026-11-07
 **Status:** Core broker implementation and tests passed.
 
 ## 1. Objective
@@ -69,63 +69,34 @@ uv run pytest -q
 git diff --check
 
 
-6. Final Results
-- Ruff: All checks passed.
-- Full test suite: 85 passed.
-- Runtime: 2.44 seconds.
-- Git whitespace and patch validation: Passed.
-7. Current Limitations and Deferred Work
-- Inventory and idempotency state are currently stored in memory.
-  They do not survive broker process restarts.
-- The inventory service is a synthetic mock service, not a real
-  external business API.
-- Persistent storage and durable idempotency records are future work.
-- OpenSandbox Credential Vault integration is deferred because the
-  current gVisor and egress networking configuration is not compatible
-  with the required credential proxy setup.
-- Integration of the broker with the trusted LangGraph workflow
-  controller is a subsequent implementation step.
-8. Conclusion
-The core M3 Secure Tool Broker implementation has passed its
-unit tests and the complete project regression suite.
 
-The implementation demonstrates execution-scoped authorization,
-controlled tool invocation, inventory reservation, idempotency,
-concurrency safety, and audit logging.
-## 9. Trusted LangGraph Tool Integration
 
-**Implementation:** `src/secure_agentic_sandbox/tool_workflow.py`
 
-**Tests:** `tests/unit/test_tool_workflow.py`
+## Hybrid Inventory Workflow — End-to-End Integration Test
 
-Implemented a separate LangGraph workflow for trusted tool invocation.
+**Date:** 2026-11-09  
+**Test type:** Manual integration test using the frontend, FastAPI and OpenSandbox.
 
-The workflow:
-- Receives a tool name and arguments.
-- Invokes the registered tool through ToolBroker.
-- Uses tenant identity and execution identity supplied by the trusted controller.
-- Keeps the grant token and trusted context outside the LangGraph state.
-- Returns the authorized tool result to the graph.
+**Submission endpoint:**
+`POST /questions/inventory-python-fulfillment/submit`
 
-### Integration Tests
+### Workflow execution
 
-| Test | What it verifies |
-|---|---|
-| Inventory lookup through LangGraph | Trusted graph can invoke inventory lookup. |
-| Inventory reservation through LangGraph | Trusted graph can invoke inventory reservation. |
-| Context override prevention | Untrusted graph input cannot override trusted identity or grant credentials. |
-| Cross-execution grant rejection | A grant belonging to another execution is rejected. |
-| Tool scope enforcement | A tool outside the grant's allowed scope is rejected. |
+| Step | Type | Observed result |
+|---|---|---|
+| lookup | Trusted tool | SKU-100 found, available quantity = 12 |
+| validate_request | Isolated Python | Validated requested quantity = 3 |
+| reserve | Trusted tool | Reservation succeeded, remaining quantity = 9 |
+| finalize | Isolated Python | Finalization step executed successfully |
 
-### Validation
+### What this demonstrates
 
-- New LangGraph tool integration tests: 5 passed.
-- Full project Ruff checks: Passed.
-- Full project pytest suite: Passed.
-- `git diff --check`: Passed.
+- Python workflow steps execute through the OpenSandbox runner.
+- Tool operations execute through the trusted Tool Broker.
+- Structured outputs are passed between steps using `$ref`.
+- Python execution results include stdout, stderr, exit code and structured output.
+- The workflow completes successfully across tool and Python steps.
 
-### Remaining Work
+**Result:** PASS
 
-The standalone trusted tool workflow is implemented and tested.
-
-Composition with the main Python execution workflow and support for user-defined declarative workflows remain future integration tasks.
+**Evidence:** Capture and retain the frontend execution screenshot alongside this record.

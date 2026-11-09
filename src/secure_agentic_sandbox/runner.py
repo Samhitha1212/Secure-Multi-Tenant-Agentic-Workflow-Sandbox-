@@ -364,7 +364,7 @@ async def _execute_python_source(
             WriteEntry(
                 path=SANDBOX_FILE,
                 data=source,
-                mode=0o644,
+                mode=644,
             )
         ]
 
@@ -373,7 +373,7 @@ async def _execute_python_source(
                 WriteEntry(
                     path=SANDBOX_INPUT_FILE,
                     data=input_data_json,
-                    mode=0o600,
+                    mode=600,
                 )
             )
 
@@ -383,7 +383,7 @@ async def _execute_python_source(
                 WriteEntry(
                     path=SANDBOX_OUTPUT_FILE,
                     data="{}",
-                    mode=0o600,
+                    mode=600,
                 )
             )
 

@@ -443,7 +443,7 @@ def build_declarative_tool_workflow(
     *,
     broker: ToolBroker,
     context: ToolCallContext,
-    grant: GrantCredential,
+    grant: GrantCredential | None,
     specification: Mapping[str, object],
 ):
     """Validate and compile a declarative workflow.
@@ -460,7 +460,7 @@ def build_declarative_tool_workflow(
     if not isinstance(context, ToolCallContext):
         raise TypeError("A trusted ToolCallContext is required.")
 
-    if not isinstance(grant, GrantCredential):
+    if grant is not None and not isinstance(grant, GrantCredential):
         raise TypeError("A valid GrantCredential is required.")
 
     definition = parse_tool_workflow_spec(
@@ -478,6 +478,11 @@ def build_declarative_tool_workflow(
             def invoke_tool(
                 state: DeclarativeWorkflowState,
             ) -> dict[str, object]:
+                if grant is None:
+                    raise RuntimeError(
+                        "A tool invocation requires a broker grant."
+                    )
+
                 previous_results = state.get("step_results", {})
                 resolved_arguments = _resolve_references(
                     step.arguments,

@@ -227,11 +227,11 @@ If diagnostics are unavailable, the runner conservatively
 preserves the ordinary timeout classification.
 
 Evidence:
-- tests/evidence/2026-11-14/m2-memory-workflow.log
-- tests/evidence/2026-11-14/m2-memory-cgroup.log
-- tests/evidence/2026-11-14/m2-memory-swap.log
-- tests/evidence/2026-11-14/m2-memory-oom-workflow.log
-- tests/evidence/2026-11-14/m2-memory-oom-cgroup.log
+- tests/evidence/2026-11-07/m2-memory-workflow.log
+- tests/evidence/2026-11-07/m2-memory-cgroup.log
+- tests/evidence/2026-11-07/m2-memory-swap.log
+- tests/evidence/2026-11-07/m2-memory-oom-workflow.log
+- tests/evidence/2026-11-07/m2-memory-oom-cgroup.log
 
 ### M2-07: OOM detection and workflow classification — PASSED
 
@@ -268,8 +268,8 @@ the workflow distinguishes resource exhaustion from an
 ordinary execution timeout.
 
 Evidence:
-- tests/evidence/2026-11-14/m2-memory-oom-diagnostic-workflow.log
-- tests/evidence/2026-11-14/m2-memory-oom-final.log
+- tests/evidence/2026-11-07/m2-memory-oom-diagnostic-workflow.log
+- tests/evidence/2026-11-07/m2-memory-oom-final.log
 
 Note:
 An HTTP 502 proxy readiness response occurred during startup
