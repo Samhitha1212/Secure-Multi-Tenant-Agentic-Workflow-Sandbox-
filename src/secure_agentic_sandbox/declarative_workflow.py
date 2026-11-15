@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from typing import TypedDict
 
@@ -79,6 +79,7 @@ class DeclarativeWorkflowState(TypedDict):
     """State maintained by the compiled workflow."""
 
     step_results: dict[str, dict[str, object]]
+    pause_requested: bool
 
 
 def _to_json_value(value: object) -> object:
@@ -445,6 +446,11 @@ def build_declarative_tool_workflow(
     context: ToolCallContext,
     grant: GrantCredential | None,
     specification: Mapping[str, object],
+    on_step_complete: Callable[
+        [int, dict[str, dict[str, object]]], bool
+    ] | None = None,
+    should_pause: Callable[[], bool] | None = None,
+    start_step_index: int = 0,
 ):
     """Validate and compile a declarative workflow.
 
@@ -463,14 +469,27 @@ def build_declarative_tool_workflow(
     if grant is not None and not isinstance(grant, GrantCredential):
         raise TypeError("A valid GrantCredential is required.")
 
+    if on_step_complete is not None and not callable(on_step_complete):
+        raise TypeError("on_step_complete must be callable.")
+
+    if should_pause is not None and not callable(should_pause):
+        raise TypeError("should_pause must be callable.")
+
     definition = parse_tool_workflow_spec(
         specification,
         available_tools=broker.registered_tools,
     )
 
+    if (
+        isinstance(start_step_index, bool)
+        or not isinstance(start_step_index, int)
+        or not 0 <= start_step_index < len(definition.steps)
+    ):
+        raise ValueError("Invalid workflow start step index.")
+
     graph = StateGraph(DeclarativeWorkflowState)
 
-    def make_step_node(step: WorkflowStep):
+    def make_step_node(step: WorkflowStep, step_index: int):
         """Create a trusted node for one validated workflow step."""
 
         if isinstance(step, ToolWorkflowStep):
@@ -478,6 +497,9 @@ def build_declarative_tool_workflow(
             def invoke_tool(
                 state: DeclarativeWorkflowState,
             ) -> dict[str, object]:
+                if should_pause is not None and should_pause():
+                    return {"pause_requested": True}
+
                 if grant is None:
                     raise RuntimeError(
                         "A tool invocation requires a broker grant."
@@ -505,13 +527,25 @@ def build_declarative_tool_workflow(
                 updated_results = dict(previous_results)
                 updated_results[step.step_id] = result
 
-                return {"step_results": updated_results}
+                pause_requested = (
+                    on_step_complete(step_index + 1, updated_results)
+                    if on_step_complete is not None
+                    else False
+                )
+
+                return {
+                    "step_results": updated_results,
+                    "pause_requested": pause_requested,
+                }
 
             return invoke_tool
 
         async def execute_python(
             state: DeclarativeWorkflowState,
         ) -> dict[str, object]:
+            if should_pause is not None and should_pause():
+                return {"pause_requested": True}
+
             previous_results = state.get("step_results", {})
             resolved_inputs = _resolve_references(
                 step.inputs,
@@ -535,38 +569,55 @@ def build_declarative_tool_workflow(
             updated_results = dict(previous_results)
             updated_results[step.step_id] = asdict(result)
 
-            return {"step_results": updated_results}
+            pause_requested = False
+            if (
+                on_step_complete is not None
+                and result.exit_code == 0
+                and not result.timed_out
+                and not result.oom_killed
+            ):
+                pause_requested = on_step_complete(
+                    step_index + 1,
+                    updated_results,
+                )
+
+            return {
+                "step_results": updated_results,
+                "pause_requested": pause_requested,
+            }
 
         return execute_python
 
-    def make_python_route(step_id: str):
-        """Stop the workflow when isolated Python execution fails."""
+    def make_step_route(step: WorkflowStep):
+        """Stop after a pause request or an unsuccessful Python step."""
 
-        def route_after_python(
-            state: DeclarativeWorkflowState,
-        ) -> str:
-            result = state.get("step_results", {}).get(step_id)
-
-            if result is None:
+        def route_after_step(state: DeclarativeWorkflowState) -> str:
+            if state.get("pause_requested") is True:
                 return "stop"
 
-            if result.get("timed_out") is True:
-                return "stop"
+            if isinstance(step, PythonWorkflowStep):
+                result = state.get("step_results", {}).get(step.step_id)
 
-            if result.get("oom_killed") is True:
-                return "stop"
+                if result is None:
+                    return "stop"
 
-            if result.get("exit_code") != 0:
-                return "stop"
+                if result.get("timed_out") is True:
+                    return "stop"
+
+                if result.get("oom_killed") is True:
+                    return "stop"
+
+                if result.get("exit_code") != 0:
+                    return "stop"
 
             return "continue"
 
-        return route_after_python
+        return route_after_step
 
-    for step in definition.steps:
-        graph.add_node(step.step_id, make_step_node(step))
+    for index, step in enumerate(definition.steps):
+        graph.add_node(step.step_id, make_step_node(step, index))
 
-    graph.add_edge(START, definition.steps[0].step_id)
+    graph.add_edge(START, definition.steps[start_step_index].step_id)
 
     for index, step in enumerate(definition.steps):
         if index == len(definition.steps) - 1:
@@ -575,16 +626,13 @@ def build_declarative_tool_workflow(
 
         next_step = definition.steps[index + 1]
 
-        if isinstance(step, PythonWorkflowStep):
-            graph.add_conditional_edges(
-                step.step_id,
-                make_python_route(step.step_id),
-                {
-                    "continue": next_step.step_id,
-                    "stop": END,
-                },
-            )
-        else:
-            graph.add_edge(step.step_id, next_step.step_id)
+        graph.add_conditional_edges(
+            step.step_id,
+            make_step_route(step),
+            {
+                "continue": next_step.step_id,
+                "stop": END,
+            },
+        )
 
     return graph.compile()

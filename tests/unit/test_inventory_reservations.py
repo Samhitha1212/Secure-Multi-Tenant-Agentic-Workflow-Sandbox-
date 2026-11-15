@@ -268,3 +268,70 @@ def test_concurrent_duplicate_reservations_decrement_stock_only_once():
     inventory = lookup(broker, context, grant)
 
     assert inventory["quantity"] == 7
+
+def test_persistent_reservation_is_idempotent_across_broker_restart(
+    tmp_path,
+):
+    database = tmp_path / "persistent-inventory.sqlite3"
+    context = ToolCallContext(
+        tenant_id="tenant-a",
+        execution_id="execution-durable",
+    )
+
+    first_broker = create_mock_tool_broker(
+        inventory={"SKU-TEST": {"quantity": 10}},
+        include_reservation=True,
+        inventory_database_path=database,
+    )
+    first_grant = first_broker.create_grant(
+        tenant_id=context.tenant_id,
+        execution_id=context.execution_id,
+        allowed_tools={"inventory.lookup", "inventory.reserve"},
+        max_calls=20,
+    )
+
+    first_result = reserve(
+        first_broker,
+        context,
+        first_grant,
+        quantity=3,
+        idempotency_key="durable-retry-001",
+    )
+
+    # A new broker instance simulates a process restart.
+    restarted_broker = create_mock_tool_broker(
+        inventory={"SKU-TEST": {"quantity": 10}},
+        include_reservation=True,
+        inventory_database_path=database,
+    )
+    restarted_grant = restarted_broker.create_grant(
+        tenant_id=context.tenant_id,
+        execution_id=context.execution_id,
+        allowed_tools={"inventory.lookup", "inventory.reserve"},
+        max_calls=20,
+    )
+
+    retry_result = reserve(
+        restarted_broker,
+        context,
+        restarted_grant,
+        quantity=3,
+        idempotency_key="durable-retry-001",
+    )
+
+    assert retry_result == first_result
+    assert retry_result["status"] == "reserved"
+    assert retry_result["remaining_quantity"] == 7
+
+    # Reusing the durable key with different input remains rejected.
+    with pytest.raises(IdempotencyConflictError):
+        reserve(
+            restarted_broker,
+            context,
+            restarted_grant,
+            quantity=4,
+            idempotency_key="durable-retry-001",
+        )
+
+    inventory = lookup(restarted_broker, context, restarted_grant)
+    assert inventory["quantity"] == 7

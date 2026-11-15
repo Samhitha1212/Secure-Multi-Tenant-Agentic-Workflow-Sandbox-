@@ -1,0 +1,32 @@
+Starting API on http://127.0.0.1:37985
+First API process is healthy.
+Workflow submitted.
+Second-step container running: 210dbf28fa45
+Runtime: runsc
+Sending SIGKILL to the first API process.
+Original HTTP request outcome: {'error': 'RemoteDisconnected: Remote end closed connection without response'}
+Removed orphaned container: 210dbf28fa45
+Restarting API against the same SQLite database.
+Restarted API is healthy.
+Startup recovery succeeded: {'status': 'paused', 'next_step_index': 1}
+Resumed-step container: bdf58b7d65cc
+Resumed runtime: runsc
+{
+  "result": "PASS",
+  "execution_id": "m4-api-crash-execution",
+  "first_api_pid": null,
+  "interrupted_container": "210dbf28fa45",
+  "interrupted_runtime": "runsc",
+  "orphan_cleanup": "manual docker rm -f confirmed",
+  "restarted_api_pid": 137067,
+  "recovered_checkpoint_status": "paused",
+  "recovered_cursor": 1,
+  "resume_http_status": 200,
+  "resume_workflow_status": "succeeded",
+  "resumed_container": "bdf58b7d65cc",
+  "resumed_runtime": "runsc",
+  "first_step_not_replayed": true,
+  "second_step_completed": true,
+  "final_checkpoint_status": "completed",
+  "final_cursor": 2
+}

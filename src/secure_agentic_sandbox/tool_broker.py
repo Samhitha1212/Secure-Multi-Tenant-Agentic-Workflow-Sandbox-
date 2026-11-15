@@ -7,11 +7,13 @@ import json
 import math
 import re
 import secrets
+import sqlite3
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 MAX_GRANT_TTL_SECONDS = 3600
@@ -544,11 +546,17 @@ class _IdempotencyRecord:
 
 
 class MockInventoryService:
-    """Thread-safe synthetic inventory and reservation service."""
+    """Thread-safe synthetic inventory and reservation service.
+
+    When database_path is provided, inventory quantities and idempotency
+    receipts are persisted together in SQLite transactions.
+    """
 
     def __init__(
         self,
         inventory: Mapping[str, Mapping[str, object]] | None = None,
+        *,
+        database_path: str | Path | None = None,
     ) -> None:
         source = inventory if inventory is not None else MOCK_INVENTORY
         self._inventory: dict[str, int] = {}
@@ -569,6 +577,70 @@ class MockInventoryService:
             tuple[str, str, str], _IdempotencyRecord
         ] = {}
         self._lock = threading.Lock()
+        self._database_path = (
+            str(database_path) if database_path is not None else None
+        )
+
+        if self._database_path is not None:
+            if self._database_path == ":memory:":
+                raise ValueError(
+                    "Persistent inventory requires a file-backed database."
+                )
+
+            Path(self._database_path).parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            with sqlite3.connect(
+                self._database_path,
+                timeout=10,
+            ) as connection:
+                connection.execute("PRAGMA busy_timeout = 10000")
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mock_inventory_items (
+                        sku TEXT PRIMARY KEY,
+                        quantity INTEGER NOT NULL CHECK (quantity >= 0)
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mock_inventory_idempotency (
+                        tenant_id TEXT NOT NULL,
+                        execution_id TEXT NOT NULL,
+                        idempotency_key TEXT NOT NULL,
+                        request_fingerprint TEXT NOT NULL,
+                        result_json TEXT NOT NULL,
+                        PRIMARY KEY (
+                            tenant_id,
+                            execution_id,
+                            idempotency_key
+                        )
+                    )
+                    """
+                )
+                connection.executemany(
+                    """
+                    INSERT OR IGNORE INTO mock_inventory_items
+                        (sku, quantity)
+                    VALUES (?, ?)
+                    """,
+                    self._inventory.items(),
+                )
+
+    def _open_connection(self) -> sqlite3.Connection:
+        """Open a short-lived connection to the persistent inventory DB."""
+
+        if self._database_path is None:
+            raise RuntimeError("Persistent inventory is not configured.")
+
+        connection = sqlite3.connect(
+            self._database_path,
+            timeout=10,
+        )
+        connection.execute("PRAGMA busy_timeout = 10000")
+        return connection
 
     def lookup(
         self,
@@ -581,7 +653,24 @@ class MockInventoryService:
         assert isinstance(sku, str)
 
         with self._lock:
-            quantity = self._inventory.get(sku)
+            if self._database_path is not None:
+                connection = self._open_connection()
+                try:
+                    row = connection.execute(
+                        """
+                        SELECT quantity
+                        FROM mock_inventory_items
+                        WHERE sku = ?
+                        """,
+                        (sku,),
+                    ).fetchone()
+                finally:
+                    connection.close()
+
+                quantity = row[0] if row is not None else None
+            else:
+                quantity = self._inventory.get(sku)
+
             if quantity is None:
                 return {
                     "sku": sku,
@@ -589,12 +678,126 @@ class MockInventoryService:
                     "available": False,
                     "quantity": 0,
                 }
+
             return {
                 "sku": sku,
                 "found": True,
                 "available": quantity > 0,
                 "quantity": quantity,
             }
+
+    def _reserve_persistent(
+        self,
+        *,
+        sku: str,
+        quantity: int,
+        idempotency_key: str,
+        context: ToolCallContext,
+        fingerprint: str,
+    ) -> dict[str, object]:
+        """Atomically reserve stock and persist its idempotency receipt."""
+
+        connection = self._open_connection()
+
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+
+            previous = connection.execute(
+                """
+                SELECT request_fingerprint, result_json
+                FROM mock_inventory_idempotency
+                WHERE tenant_id = ?
+                  AND execution_id = ?
+                  AND idempotency_key = ?
+                """,
+                (
+                    context.tenant_id,
+                    context.execution_id,
+                    idempotency_key,
+                ),
+            ).fetchone()
+
+            if previous is not None:
+                if previous[0] != fingerprint:
+                    raise IdempotencyConflictError(
+                        "Idempotency key was already used with different "
+                        "request data."
+                    )
+
+                result = json.loads(previous[1])
+                connection.commit()
+                return result
+
+            row = connection.execute(
+                """
+                SELECT quantity
+                FROM mock_inventory_items
+                WHERE sku = ?
+                """,
+                (sku,),
+            ).fetchone()
+
+            available_quantity = row[0] if row is not None else None
+
+            if available_quantity is None:
+                result: dict[str, object] = {
+                    "status": "not_found",
+                    "sku": sku,
+                    "quantity": quantity,
+                }
+            elif available_quantity < quantity:
+                result = {
+                    "status": "insufficient_stock",
+                    "sku": sku,
+                    "requested_quantity": quantity,
+                    "available_quantity": available_quantity,
+                }
+            else:
+                remaining_quantity = available_quantity - quantity
+                connection.execute(
+                    """
+                    UPDATE mock_inventory_items
+                    SET quantity = ?
+                    WHERE sku = ?
+                    """,
+                    (remaining_quantity, sku),
+                )
+                result = {
+                    "status": "reserved",
+                    "reservation_id": str(uuid4()),
+                    "sku": sku,
+                    "quantity": quantity,
+                    "remaining_quantity": remaining_quantity,
+                }
+
+            connection.execute(
+                """
+                INSERT INTO mock_inventory_idempotency (
+                    tenant_id,
+                    execution_id,
+                    idempotency_key,
+                    request_fingerprint,
+                    result_json
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    context.tenant_id,
+                    context.execution_id,
+                    idempotency_key,
+                    fingerprint,
+                    json.dumps(result, allow_nan=False, sort_keys=True),
+                ),
+            )
+
+            connection.commit()
+            return result
+
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def reserve(
         self,
@@ -604,8 +807,8 @@ class MockInventoryService:
         """Reserve inventory once per execution and idempotency key.
 
         Repeated requests with the same key and same input return the
-        original result without decrementing inventory again. Reusing a
-        key with different input raises IdempotencyConflictError.
+        original result. In persistent mode, the stock change and its
+        idempotency receipt are committed in one SQLite transaction.
         """
 
         sku = arguments["sku"]
@@ -628,13 +831,21 @@ class MockInventoryService:
         )
 
         with self._lock:
+            if self._database_path is not None:
+                return self._reserve_persistent(
+                    sku=sku,
+                    quantity=quantity,
+                    idempotency_key=idempotency_key,
+                    context=context,
+                    fingerprint=fingerprint,
+                )
+
             previous = self._idempotency_records.get(scoped_key)
             if previous is not None:
                 if previous.request_fingerprint != fingerprint:
                     raise IdempotencyConflictError(
                         "Idempotency key was already used with different request data."
                     )
-                # Return a detached JSON-compatible copy.
                 return json.loads(json.dumps(previous.result))
 
             available_quantity = self._inventory.get(sku)
@@ -661,8 +872,6 @@ class MockInventoryService:
                     "remaining_quantity": available_quantity - quantity,
                 }
 
-            # Cache the result, including negative outcomes, so retries
-            # cannot change the outcome for an already-used request key.
             self._idempotency_records[scoped_key] = _IdempotencyRecord(
                 request_fingerprint=fingerprint,
                 result=dict(result),
@@ -750,6 +959,7 @@ def create_mock_tool_broker(
     *,
     inventory: Mapping[str, Mapping[str, object]] | None = None,
     include_reservation: bool = False,
+    inventory_database_path: str | Path | None = None,
 ) -> ToolBroker:
     """Create a broker with mock inventory tools.
 
@@ -761,7 +971,10 @@ def create_mock_tool_broker(
     """
 
     broker = ToolBroker()
-    service = MockInventoryService(inventory)
+    service = MockInventoryService(
+        inventory,
+        database_path=inventory_database_path,
+    )
 
     broker.register_tool(
         name="inventory.lookup",

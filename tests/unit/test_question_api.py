@@ -16,7 +16,7 @@ def broker():
 
 
 @pytest.fixture
-def client(broker):
+def client(broker, tmp_path):
     app = create_app(
         api_keys={
             API_KEY: ApiPrincipal(
@@ -30,8 +30,10 @@ def client(broker):
             )
         },
         broker=broker,
+        checkpoint_db_path=tmp_path / "question-api-checkpoints.sqlite3",
     )
-    return TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def auth_headers():
@@ -144,11 +146,13 @@ def test_python_question_rejects_workflow_specification(client):
     assert response.status_code == 422
 
 
+
 def test_workflow_question_submission(client):
     response = client.post(
         "/questions/inventory-reservation/submit",
         headers=auth_headers(),
         json={
+            "execution_id": "question-workflow-test-001",
             "specification": {
                 "version": 1,
                 "steps": [
@@ -169,7 +173,7 @@ def test_workflow_question_submission(client):
                         },
                     },
                 ],
-            }
+            },
         },
     )
 
@@ -177,6 +181,7 @@ def test_workflow_question_submission(client):
 
     result = response.json()
 
+    assert result["execution_id"] == "question-workflow-test-001"
     assert result["status"] == "succeeded"
     assert result["submission_type"] == "workflow"
     assert result["tools_used"] == [
@@ -186,7 +191,7 @@ def test_workflow_question_submission(client):
     assert result["step_results"]["reserve"]["remaining_quantity"] == 10
 
 
-def test_question_request_cannot_override_resource_limits(monkeypatch):
+def test_question_request_cannot_override_resource_limits(monkeypatch, tmp_path):
     broker = create_mock_tool_broker(include_reservation=True)
 
     restricted_client = TestClient(
@@ -203,6 +208,7 @@ def test_question_request_cannot_override_resource_limits(monkeypatch):
                 )
             },
             broker=broker,
+            checkpoint_db_path=tmp_path / "restricted-api-checkpoints.sqlite3",
         )
     )
 
@@ -245,3 +251,314 @@ def test_question_request_cannot_override_tenant(client):
     )
 
     assert response.status_code == 422
+
+
+def test_workflow_submission_persists_checkpoint(client):
+    response = client.post(
+        "/questions/inventory-reservation/submit",
+        headers=auth_headers(),
+        json={
+            "specification": {
+                "version": 1,
+                "steps": [
+                    {
+                        "id": "lookup",
+                        "type": "tool",
+                        "tool": "inventory.lookup",
+                        "arguments": {"sku": "SKU-100"},
+                    }
+                ],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    checkpoint = client.app.state.checkpoint_store.get_checkpoint(
+        tenant_id="tenant-a",
+        execution_id=payload["execution_id"],
+    )
+
+    assert checkpoint is not None
+    assert checkpoint.status == "completed"
+    assert checkpoint.next_step_index == 1
+    assert checkpoint.step_results["lookup"]["found"] is True
+
+
+def test_pause_endpoint_requests_pause_for_owned_execution(client):
+    store = client.app.state.checkpoint_store
+
+    store.create_checkpoint(
+        tenant_id="tenant-a",
+        execution_id="execution-api-pause",
+        workflow_version=1,
+        specification={
+            "version": 1,
+            "steps": [
+                {
+                    "id": "lookup",
+                    "type": "tool",
+                    "tool": "inventory.lookup",
+                    "arguments": {"sku": "SKU-100"},
+                }
+            ],
+        },
+    )
+
+    response = client.post(
+        "/executions/execution-api-pause/pause",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "execution_id": "execution-api-pause",
+        "status": "pause_requested",
+        "checkpoint_status": "running",
+    }
+
+    checkpoint = store.get_checkpoint(
+        tenant_id="tenant-a",
+        execution_id="execution-api-pause",
+    )
+    assert checkpoint is not None
+    assert checkpoint.pause_requested is True
+    assert checkpoint.status == "running"
+
+
+def test_pause_endpoint_does_not_allow_cross_tenant_access(client):
+    store = client.app.state.checkpoint_store
+
+    store.create_checkpoint(
+        tenant_id="tenant-b",
+        execution_id="execution-other-tenant",
+        workflow_version=1,
+        specification={
+            "version": 1,
+            "steps": [
+                {
+                    "id": "lookup",
+                    "type": "tool",
+                    "tool": "inventory.lookup",
+                    "arguments": {"sku": "SKU-100"},
+                }
+            ],
+        },
+    )
+
+    response = client.post(
+        "/executions/execution-other-tenant/pause",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 404
+
+    checkpoint = store.get_checkpoint(
+        tenant_id="tenant-b",
+        execution_id="execution-other-tenant",
+    )
+    assert checkpoint is not None
+    assert checkpoint.pause_requested is False
+
+
+def test_pause_endpoint_requires_authentication(client):
+    response = client.post(
+        "/executions/execution-missing/pause",
+    )
+
+    assert response.status_code == 401
+
+
+def test_pause_endpoint_rejects_non_running_execution(client):
+    store = client.app.state.checkpoint_store
+
+    store.create_checkpoint(
+        tenant_id="tenant-a",
+        execution_id="execution-already-completed",
+        workflow_version=1,
+        specification={
+            "version": 1,
+            "steps": [
+                {
+                    "id": "lookup",
+                    "type": "tool",
+                    "tool": "inventory.lookup",
+                    "arguments": {"sku": "SKU-100"},
+                }
+            ],
+        },
+        status="completed",
+    )
+
+    response = client.post(
+        "/executions/execution-already-completed/pause",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 409
+
+
+def test_resume_endpoint_continues_owned_checkpoint(client):
+    store = client.app.state.checkpoint_store
+
+    specification = {
+        "version": 1,
+        "steps": [
+            {
+                "id": "lookup",
+                "type": "tool",
+                "tool": "inventory.lookup",
+                "arguments": {"sku": "SKU-100"},
+            },
+            {
+                "id": "lookup_again",
+                "type": "tool",
+                "tool": "inventory.lookup",
+                "arguments": {"sku": "SKU-100"},
+            },
+        ],
+    }
+
+    saved_result = {
+        "sku": "SAVED-BEFORE-RESUME",
+        "found": True,
+        "quantity": 123,
+    }
+
+    store.create_checkpoint(
+        tenant_id="tenant-a",
+        execution_id="execution-api-resume",
+        workflow_version=1,
+        specification=specification,
+        allowed_tools={"inventory.lookup"},
+        next_step_index=1,
+        step_results={"lookup": saved_result},
+        status="paused",
+    )
+
+    response = client.post(
+        "/executions/execution-api-resume/resume",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["execution_id"] == "execution-api-resume"
+    assert payload["status"] == "succeeded"
+    assert payload["step_results"]["lookup"] == saved_result
+    assert payload["step_results"]["lookup_again"]["found"] is True
+
+    checkpoint = store.get_checkpoint(
+        tenant_id="tenant-a",
+        execution_id="execution-api-resume",
+    )
+
+    assert checkpoint is not None
+    assert checkpoint.status == "completed"
+    assert checkpoint.next_step_index == 2
+    assert checkpoint.step_results["lookup"] == saved_result
+    assert (
+        checkpoint.step_results["lookup_again"]
+        == payload["step_results"]["lookup_again"]
+    )
+    assert checkpoint.step_results["lookup_again"]["found"] is True
+
+def test_resume_endpoint_rejects_another_tenant_checkpoint(client):
+    store = client.app.state.checkpoint_store
+
+    store.create_checkpoint(
+        tenant_id="tenant-b",
+        execution_id="execution-other-tenant-resume",
+        workflow_version=1,
+        specification={
+            "version": 1,
+            "steps": [
+                {
+                    "id": "lookup",
+                    "type": "tool",
+                    "tool": "inventory.lookup",
+                    "arguments": {"sku": "SKU-100"},
+                }
+            ],
+        },
+        status="paused",
+    )
+
+    response = client.post(
+        "/executions/execution-other-tenant-resume/resume",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 404
+
+    checkpoint = store.get_checkpoint(
+        tenant_id="tenant-b",
+        execution_id="execution-other-tenant-resume",
+    )
+
+    assert checkpoint is not None
+    assert checkpoint.status == "paused"
+
+
+def test_resume_endpoint_requires_authentication(client):
+    response = client.post(
+        "/executions/execution-api-resume/resume",
+    )
+
+    assert response.status_code == 401
+
+
+
+
+def test_workflow_question_submission_generates_execution_id(client):
+    response = client.post(
+        "/questions/inventory-reservation/submit",
+        headers=auth_headers(),
+        json={
+            "specification": {
+                "version": 1,
+                "steps": [
+                    {
+                        "id": "lookup",
+                        "type": "tool",
+                        "tool": "inventory.lookup",
+                        "arguments": {"sku": "SKU-100"},
+                    }
+                ],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+
+    result = response.json()
+
+    assert result["execution_id"]
+    assert result["submission_type"] == "workflow"
+    assert result["status"] == "succeeded"
+
+
+def test_workflow_question_submission_rejects_invalid_execution_id(client):
+    response = client.post(
+        "/questions/inventory-reservation/submit",
+        headers=auth_headers(),
+        json={
+            "execution_id": "invalid execution id!",
+            "specification": {
+                "version": 1,
+                "steps": [
+                    {
+                        "id": "lookup",
+                        "type": "tool",
+                        "tool": "inventory.lookup",
+                        "arguments": {"sku": "SKU-100"},
+                    }
+                ],
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Invalid execution ID."

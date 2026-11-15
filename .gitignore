@@ -10,3 +10,5 @@ htmlcov/
 !.env.example
 dist/
 build/
+
+data/*.sqlite3*

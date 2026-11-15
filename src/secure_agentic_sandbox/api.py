@@ -7,14 +7,21 @@ import hmac
 import json
 import os
 from collections.abc import Mapping
+from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from secure_agentic_sandbox import runner
+from secure_agentic_sandbox.checkpoint_store import (
+    CheckpointConflictError,
+    CheckpointNotFoundError,
+    CheckpointStore,
+)
 from secure_agentic_sandbox.declarative_workflow import WorkflowSpecError
 from secure_agentic_sandbox.question_registry import (
     QuestionNotFoundError,
@@ -54,21 +61,22 @@ class ApiPrincipal:
 
 
 class WorkflowSubmission(BaseModel):
-    """Legacy request body for direct workflow execution."""
+    """Request body for direct workflow execution."""
 
     model_config = ConfigDict(extra="forbid")
 
     specification: dict[str, object]
+    execution_id: str | None = None
 
 
 class QuestionSubmission(BaseModel):
-    """Request body for submitting a solution to a question."""
+    """Request body for submitting a solution to a registered question."""
 
     model_config = ConfigDict(extra="forbid")
 
     source: str | None = None
     specification: dict[str, object] | None = None
-
+    execution_id: str | None = None
 
 def load_api_keys_from_environment() -> dict[str, ApiPrincipal]:
     """Load development API keys from SECURE_SANDBOX_API_KEYS."""
@@ -122,6 +130,7 @@ def create_app(
     api_keys: Mapping[str, ApiPrincipal] | None = None,
     broker: ToolBroker | None = None,
     question_registry: QuestionRegistry | None = None,
+    checkpoint_db_path: str | Path | None = None,
 ) -> FastAPI:
     """Create the API with trusted tenant, broker and question configuration."""
 
@@ -144,19 +153,45 @@ def create_app(
         digest = hashlib.sha256(token.encode("utf-8")).digest()
         key_registry[digest] = principal
 
-    active_broker = (
-        broker
-        if broker is not None
-        else create_mock_tool_broker(include_reservation=True)
-    )
-
     active_registry = (
         question_registry
         if question_registry is not None
         else create_default_question_registry()
     )
 
-    service = WorkflowExecutionService(active_broker)
+    database_path = (
+        checkpoint_db_path
+        if checkpoint_db_path is not None
+        else os.getenv(
+            "SECURE_SANDBOX_CHECKPOINT_DB",
+            "data/workflow_checkpoints.sqlite3",
+        )
+    )
+
+    # The default mock inventory shares the checkpoint database so that
+    # reservation results and stock changes survive application restarts.
+    active_broker = (
+        broker
+        if broker is not None
+        else create_mock_tool_broker(
+            include_reservation=True,
+            inventory_database_path=database_path,
+        )
+    )
+    active_checkpoint_store = CheckpointStore(database_path)
+    service = WorkflowExecutionService(
+        active_broker,
+        checkpoint_store=active_checkpoint_store,
+    )
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        try:
+            active_checkpoint_store.acquire_runtime_lock()
+            active_checkpoint_store.recover_interrupted_executions()
+            yield
+        finally:
+            active_checkpoint_store.close()
 
     app = FastAPI(
         title="Secure Agentic Workflow Sandbox",
@@ -165,11 +200,13 @@ def create_app(
             "isolated execution and authorized tool invocation."
         ),
         version="0.2.0",
+        lifespan=lifespan,
     )
 
     app.state.broker = active_broker
     app.state.workflow_service = service
     app.state.question_registry = active_registry
+    app.state.checkpoint_store = active_checkpoint_store
 
     def authenticate(authorization: str | None) -> ApiPrincipal:
         """Authenticate a bearer token and retrieve its trusted principal."""
@@ -287,6 +324,7 @@ def create_app(
 
         return result
 
+
     @app.post("/questions/{question_id}/submit")
     async def submit_question(
         question_id: str,
@@ -297,7 +335,6 @@ def create_app(
 
         principal = authenticate(authorization)
         question = get_question(question_id)
-        execution_id = str(uuid4())
 
         if question.type == "python":
             if request.source is None or request.specification is not None:
@@ -308,6 +345,9 @@ def create_app(
                         "accept 'specification'."
                     ),
                 )
+
+            # Python submissions retain server-generated execution IDs.
+            execution_id = str(uuid4())
 
             try:
                 execution_result = await runner.run_python_source(
@@ -350,6 +390,18 @@ def create_app(
                     "accept 'source'."
                 ),
             )
+
+        # Use the frontend-provided ID when available so that it can
+        # request a pause while this workflow is executing.
+        execution_id = request.execution_id or str(uuid4())
+
+        try:
+            validate_identifier(execution_id, "execution ID")
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid execution ID.",
+            ) from exc
 
         # Never let the submitted workflow choose its resource limits.
         # Apply the platform-defined limits to every Python step.
@@ -403,6 +455,7 @@ def create_app(
             "step_results": result.step_results,
         }
 
+
     # Preserve the original direct workflow endpoint for development.
     @app.post("/workflows/execute")
     async def execute_workflow(
@@ -412,7 +465,15 @@ def create_app(
         """Execute a workflow directly without selecting a question."""
 
         principal = authenticate(authorization)
-        execution_id = str(uuid4())
+
+        execution_id = request.execution_id or str(uuid4())
+        try:
+            validate_identifier(execution_id, "execution ID")
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid execution ID.",
+            ) from exc
 
         try:
             result = await service.execute(
@@ -421,6 +482,83 @@ def create_app(
                 specification=request.specification,
                 allowed_tools=principal.allowed_tools,
             )
+        except WorkflowAuthorizationError as exc:
+            raise HTTPException(
+                status_code=403,
+                detail=str(exc),
+            ) from exc
+        except WorkflowSpecError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=str(exc),
+            ) from exc
+
+        return {
+            "execution_id": result.execution_id,
+            "status": result.status,
+            "tools_used": list(result.tools_used),
+            "step_results": result.step_results,
+        }
+
+    @app.post(
+        "/executions/{execution_id}/pause",
+        status_code=202,
+    )
+    async def pause_execution(
+        execution_id: str,
+        authorization: str | None = Header(default=None),
+    ):
+        """Request a safe pause for an execution owned by the caller."""
+
+        principal = authenticate(authorization)
+
+        try:
+            checkpoint = active_checkpoint_store.request_pause(
+                tenant_id=principal.tenant_id,
+                execution_id=execution_id,
+            )
+        except CheckpointNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="Execution checkpoint not found.",
+            ) from exc
+        except CheckpointConflictError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=str(exc),
+            ) from exc
+
+        return {
+            "execution_id": execution_id,
+            "status": "pause_requested",
+            "checkpoint_status": checkpoint.status,
+        }
+
+    @app.post("/executions/{execution_id}/resume")
+    async def resume_execution(
+        execution_id: str,
+        authorization: str | None = Header(default=None),
+    ):
+        """Resume an owned paused workflow from its saved checkpoint."""
+
+        principal = authenticate(authorization)
+
+        try:
+            result = await service.resume(
+                tenant_id=principal.tenant_id,
+                execution_id=execution_id,
+                allowed_tools=principal.allowed_tools,
+            )
+        except CheckpointNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="Execution checkpoint not found.",
+            ) from exc
+        except CheckpointConflictError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=str(exc),
+            ) from exc
         except WorkflowAuthorizationError as exc:
             raise HTTPException(
                 status_code=403,

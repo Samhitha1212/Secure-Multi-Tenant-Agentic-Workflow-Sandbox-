@@ -1,0 +1,29 @@
+retrying GET http://127.0.0.1:8080/v1/sandboxes/86f0cd0b-1f02-456c-bc6d-819cc48c2078/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=d790799d12404f3aaaa283e16c1261a4
+retrying GET http://127.0.0.1:8080/v1/sandboxes/0ddd0504-6221-4e4e-9068-2064c853ab5f/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=0cc88b2830004aa1b000b7be2c6e262d
+Starting first workflow execution...
+First Docker container: fe129a1bff38
+First container runtime: runsc
+Pause requested while first Python step was running.
+First sandbox container removed after pause.
+Resuming workflow from checkpoint...
+Second Docker container: ccda2e9c826e
+Second container runtime: runsc
+Second sandbox container removed after completion.
+{
+  "result": "PASS",
+  "execution_id": "m46-live-resume-20261115",
+  "pause_status": "paused",
+  "resume_status": "succeeded",
+  "first_sandbox_id": "86f0cd0b-1f02-456c-bc6d-819cc48c2078",
+  "second_sandbox_id": "0ddd0504-6221-4e4e-9068-2064c853ab5f",
+  "first_docker_container": "fe129a1bff38",
+  "second_docker_container": "ccda2e9c826e",
+  "first_runtime": "runsc",
+  "second_runtime": "runsc",
+  "first_step_output": "M46_FIRST_STEP_STARTED\nM46_FIRST_STEP_FINISHED\n",
+  "second_step_output": "M46_SECOND_STEP_STARTED\nM46_SECOND_STEP_FINISHED\n",
+  "first_container_removed": true,
+  "second_container_removed": true,
+  "final_checkpoint_status": "completed",
+  "final_next_step_index": 2
+}

@@ -260,3 +260,69 @@ def test_python_step_rejects_invalid_resource_limits():
                 ],
             },
         )
+
+
+@pytest.mark.asyncio
+async def test_graph_resumes_from_saved_step_results(monkeypatch):
+    broker, context, grant = create_broker_and_grant()
+    executed_sources = []
+    captured_inputs = {}
+
+    async def fake_run_python_source(source, **options):
+        executed_sources.append(source)
+        captured_inputs.update(options.get("input_data", {}))
+
+        return runner.ExecutionResult(
+            sandbox_id="fresh-sandbox",
+            stdout="Resumed\n",
+            stderr="",
+            exit_code=0,
+            timed_out=False,
+            duration_seconds=0.1,
+            output={"result": 42},
+        )
+
+    monkeypatch.setattr(
+        runner,
+        "run_python_source",
+        fake_run_python_source,
+    )
+
+    graph = build_declarative_tool_workflow(
+        broker=broker,
+        context=context,
+        grant=grant,
+        specification={
+            "version": 1,
+            "steps": [
+                {
+                    "id": "first",
+                    "type": "python",
+                    "source": "print('first')",
+                },
+                {
+                    "id": "second",
+                    "type": "python",
+                    "source": "print('second')",
+                    "inputs": {
+                        "value": {"$ref": "first.output.value"},
+                    },
+                },
+            ],
+        },
+        start_step_index=1,
+    )
+
+    saved_results = {
+        "first": {
+            "output": {"value": 7},
+            "exit_code": 0,
+        }
+    }
+
+    result = await graph.ainvoke({"step_results": saved_results})
+
+    assert executed_sources == ["print('second')"]
+    assert captured_inputs == {"value": 7}
+    assert result["step_results"]["first"] == saved_results["first"]
+    assert result["step_results"]["second"]["output"] == {"result": 42}
