@@ -1,4 +1,5 @@
-import { useState } from 'react'
+
+import { useEffect, useState } from 'react'
 import {
   Braces,
   CheckCircle2,
@@ -11,6 +12,7 @@ import {
   KeyRound,
   LoaderCircle,
   LogOut,
+  Pause,
   Play,
   RotateCcw,
   Terminal,
@@ -70,6 +72,32 @@ interface QuestionsResponse {
   questions: QuestionSummary[]
 }
 
+interface DemoUser {
+  user_id: string
+  email: string
+  tenant_id: string
+  role: string
+}
+
+interface DemoUsersResponse {
+  users: DemoUser[]
+}
+
+interface LoginResponse {
+  access_token: string
+  token_type: string
+  user: DemoUser
+}
+
+interface SubmissionPayload {
+  source?: string
+  specification?: Record<string, unknown>
+  execution_id?: string
+}
+
+const PAUSE_RETRY_COUNT = 12
+const PAUSE_RETRY_DELAY_MS = 250
+
 async function responseError(response: Response): Promise<string> {
   const body = await response.json().catch(() => null)
 
@@ -88,8 +116,15 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1024)} KiB`
 }
 
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+}
+
 function App() {
-  const [apiKey, setApiKey] = useState('')
+  const [demoUsers, setDemoUsers] = useState<DemoUser[]>([])
+  const [selectedDemoEmail, setSelectedDemoEmail] = useState('')
+  const [demoUsersLoading, setDemoUsersLoading] = useState(true)
+  const [connectedUser, setConnectedUser] = useState<DemoUser | null>(null)
   const [connectedKey, setConnectedKey] = useState<string | null>(null)
   const [questions, setQuestions] = useState<QuestionSummary[]>([])
   const [selectedQuestion, setSelectedQuestion] =
@@ -101,69 +136,78 @@ function App() {
   const [connecting, setConnecting] = useState(false)
   const [loadingQuestion, setLoadingQuestion] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [pausing, setPausing] = useState(false)
+  const [resuming, setResuming] = useState(false)
+
+  const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null)
+  const [pauseRequested, setPauseRequested] = useState(false)
+  const [executionPaused, setExecutionPaused] = useState(false)
 
   const [notice, setNotice] = useState('')
   const [noticeType, setNoticeType] = useState<'error' | 'success'>('error')
 
   const isConnected = connectedKey !== null
 
-  async function connectToPlatform() {
-    const key = apiKey.trim()
+  // Keep the selected question and editor stable while an execution is active.
+  const executionLocked =
+    submitting ||
+    pausing ||
+    resuming ||
+    executionPaused ||
+    activeExecutionId !== null
 
-    if (!key) {
-      setNoticeType('error')
-      setNotice('Enter your API key.')
-      return
-    }
+  useEffect(() => {
+      let cancelled = false
 
-    setConnecting(true)
-    setNotice('')
+      async function loadDemoUsers() {
+        try {
+          const response = await fetch('/api/auth/demo-users')
 
-    try {
-      const response = await fetch('/api/questions', {
-        headers: { Authorization: `Bearer ${key}` },
-      })
+          if (!response.ok) {
+            throw new Error(await responseError(response))
+          }
 
-      if (!response.ok) {
-        throw new Error(await responseError(response))
+          const data = (await response.json()) as DemoUsersResponse
+
+          if (!cancelled) {
+            setDemoUsers(data.users)
+            setSelectedDemoEmail(data.users[0]?.email ?? '')
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setNoticeType('error')
+            setNotice(
+              error instanceof Error
+                ? error.message
+                : 'Unable to load demo users.',
+            )
+          }
+        } finally {
+          if (!cancelled) {
+            setDemoUsersLoading(false)
+          }
+        }
       }
 
-      const data = (await response.json()) as QuestionsResponse
-      setQuestions(data.questions)
-      setConnectedKey(key)
-      setSelectedQuestion(null)
-      setEditorValue('')
-      setExecutionResult(null)
-      setNoticeType('success')
-      setNotice('Connected.')
-    } catch (error) {
-      setNoticeType('error')
-      setNotice(error instanceof Error ? error.message : 'Unable to connect.')
-    } finally {
-      setConnecting(false)
-    }
-  }
+      void loadDemoUsers()
 
-  function disconnectFromPlatform() {
-    setConnectedKey(null)
-    setApiKey('')
-    setQuestions([])
-    setSelectedQuestion(null)
-    setEditorValue('')
-    setExecutionResult(null)
-    setNotice('')
-  }
+      return () => {
+        cancelled = true
+      }
+    }, [])
 
-  async function selectQuestion(question: QuestionSummary) {
-    if (!connectedKey) return
+
+    async function selectQuestion(question: QuestionSummary) {
+    if (!connectedKey || executionLocked) return
 
     setLoadingQuestion(true)
     setNotice('')
-    setExecutionResult(null)
 
     try {
       const response = await fetch(`/api/questions/${question.id}`, {
-        headers: { Authorization: `Bearer ${connectedKey}` },
+        headers: {
+          Authorization: `Bearer ${connectedKey}`,
+        },
       })
 
       if (!response.ok) {
@@ -171,24 +215,132 @@ function App() {
       }
 
       const details = (await response.json()) as QuestionDetails
+
       setSelectedQuestion(details)
       setEditorValue(
         details.type === 'python'
           ? details.starter_code ?? ''
           : JSON.stringify(details.starter_workflow ?? {}, null, 2),
       )
+      setExecutionResult(null)
+      setActiveExecutionId(null)
+      setPauseRequested(false)
+      setExecutionPaused(false)
     } catch (error) {
       setNoticeType('error')
       setNotice(
-        error instanceof Error ? error.message : 'Unable to load the question.',
+        error instanceof Error
+          ? error.message
+          : 'Unable to load the selected question.',
       )
     } finally {
       setLoadingQuestion(false)
     }
   }
 
+  async function connectToPlatform() {
+  if (!selectedDemoEmail) {
+    setNoticeType('error')
+    setNotice('Select a demo user.')
+    return
+  }
+
+  setConnecting(true)
+  setNotice('')
+
+  try {
+    const loginResponse = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: selectedDemoEmail }),
+    })
+
+    if (!loginResponse.ok) {
+      throw new Error(await responseError(loginResponse))
+    }
+
+    const loginData = (await loginResponse.json()) as LoginResponse
+    const token = loginData.access_token
+
+    const questionsResponse = await fetch('/api/questions', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    if (!questionsResponse.ok) {
+      // Do not leave an unused session active if loading questions fails.
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => undefined)
+
+      throw new Error(await responseError(questionsResponse))
+    }
+
+    const questionsData =
+      (await questionsResponse.json()) as QuestionsResponse
+
+    setQuestions(questionsData.questions)
+    setConnectedKey(token)
+    setConnectedUser(loginData.user)
+    setSelectedQuestion(null)
+    setEditorValue('')
+    setExecutionResult(null)
+    setActiveExecutionId(null)
+    setPauseRequested(false)
+    setExecutionPaused(false)
+    setNoticeType('success')
+    setNotice(`Logged in as ${loginData.user.email}.`)
+  } catch (error) {
+    setNoticeType('error')
+    setNotice(
+      error instanceof Error ? error.message : 'Unable to log in.',
+    )
+  } finally {
+    setConnecting(false)
+  }
+}
+
+
+  async function disconnectFromPlatform() {
+  if (executionLocked || !connectedKey) return
+
+  setConnecting(true)
+  setNotice('')
+
+  try {
+    const response = await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${connectedKey}` },
+    })
+
+    if (!response.ok) {
+      throw new Error(await responseError(response))
+    }
+
+    setConnectedKey(null)
+    setConnectedUser(null)
+    setQuestions([])
+    setSelectedQuestion(null)
+    setEditorValue('')
+    setExecutionResult(null)
+    setActiveExecutionId(null)
+    setPauseRequested(false)
+    setExecutionPaused(false)
+    setNoticeType('success')
+    setNotice('Logged out successfully.')
+  } catch (error) {
+    setNoticeType('error')
+    setNotice(
+      error instanceof Error ? error.message : 'Unable to log out.',
+    )
+  } finally {
+    setConnecting(false)
+  }
+}
+
+
   async function submitSolution() {
-    if (!connectedKey || !selectedQuestion) return
+    if (!connectedKey || !selectedQuestion || executionLocked) return
 
     if (!selectedQuestion.permissions_satisfied) {
       setNoticeType('error')
@@ -196,10 +348,10 @@ function App() {
       return
     }
 
-    let payload: { source?: string; specification?: Record<string, unknown> }
+    const payload: SubmissionPayload = {}
 
     if (selectedQuestion.type === 'python') {
-      payload = { source: editorValue }
+      payload.source = editorValue
     } else {
       try {
         const parsed: unknown = JSON.parse(editorValue)
@@ -212,7 +364,8 @@ function App() {
           throw new Error('The workflow must be a JSON object.')
         }
 
-        payload = { specification: parsed as Record<string, unknown> }
+        payload.specification = parsed as Record<string, unknown>
+        payload.execution_id = crypto.randomUUID()
       } catch (error) {
         setNoticeType('error')
         setNotice(
@@ -222,8 +375,13 @@ function App() {
       }
     }
 
+    const executionId = payload.execution_id ?? null
+
     setSubmitting(true)
     setExecutionResult(null)
+    setPauseRequested(false)
+    setExecutionPaused(false)
+    setActiveExecutionId(executionId)
     setNotice('')
 
     try {
@@ -245,22 +403,160 @@ function App() {
 
       const result = (await response.json()) as ExecutionResponse
       setExecutionResult(result)
-      setNoticeType(result.status === 'succeeded' ? 'success' : 'error')
-      setNotice(
-        result.status === 'succeeded'
-          ? 'Submission completed.'
-          : `Submission status: ${result.status.replaceAll('_', ' ')}`,
-      )
+
+      if (result.status === 'paused') {
+        setActiveExecutionId(result.execution_id)
+        setPauseRequested(true)
+        setExecutionPaused(true)
+        setNoticeType('success')
+        setNotice('Workflow paused at a step boundary. You can resume it.')
+      } else {
+        setActiveExecutionId(null)
+        setPauseRequested(false)
+        setExecutionPaused(false)
+        setNoticeType(result.status === 'succeeded' ? 'success' : 'error')
+        setNotice(
+          result.status === 'succeeded'
+            ? 'Submission completed.'
+            : `Submission status: ${result.status.replaceAll('_', ' ')}`,
+        )
+      }
     } catch (error) {
       setNoticeType('error')
-      setNotice(error instanceof Error ? error.message : 'Submission failed.')
+      setNotice(
+        error instanceof Error
+          ? `${error.message} The execution state may be unknown if the connection was interrupted.`
+          : 'Submission failed. The execution state may be unknown.',
+      )
+
+      // Keep the workflow execution ID if the request failed at the network
+      // level. The user can still try requesting a pause for this execution.
+      if (selectedQuestion.type === 'python') {
+        setActiveExecutionId(null)
+      }
     } finally {
       setSubmitting(false)
     }
   }
 
+  async function pauseExecution() {
+    if (
+      !connectedKey ||
+      !activeExecutionId ||
+      executionPaused ||
+      pauseRequested ||
+      pausing ||
+      resuming
+    ) {
+      return
+    }
+
+    setPausing(true)
+    setNotice('')
+
+    try {
+      let response: Response | null = null
+
+      // The submit request is synchronous, and its checkpoint may not exist
+      // immediately. Retry a 404 briefly before reporting that pause failed.
+      for (let attempt = 0; attempt < PAUSE_RETRY_COUNT; attempt += 1) {
+        response = await fetch(
+          `/api/executions/${activeExecutionId}/pause`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${connectedKey}` },
+          },
+        )
+
+        if (response.status !== 404) {
+          break
+        }
+
+        if (attempt < PAUSE_RETRY_COUNT - 1) {
+          await sleep(PAUSE_RETRY_DELAY_MS)
+        }
+      }
+
+      if (!response || !response.ok) {
+        throw new Error(
+          response
+            ? await responseError(response)
+            : 'Unable to request a pause.',
+        )
+      }
+
+      setPauseRequested(true)
+      setNoticeType('success')
+      setNotice(
+        'Pause requested. The current workflow step will finish before it pauses.',
+      )
+    } catch (error) {
+      setNoticeType('error')
+      setNotice(
+        error instanceof Error ? error.message : 'Unable to request a pause.',
+      )
+    } finally {
+      setPausing(false)
+    }
+  }
+
+  async function resumeExecution() {
+    if (
+      !connectedKey ||
+      !activeExecutionId ||
+      !executionPaused ||
+      resuming ||
+      submitting
+    ) {
+      return
+    }
+
+    setResuming(true)
+    setNotice('')
+
+    try {
+      const response = await fetch(
+        `/api/executions/${activeExecutionId}/resume`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${connectedKey}` },
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error(await responseError(response))
+      }
+
+      const result = (await response.json()) as ExecutionResponse
+      setExecutionResult(result)
+
+      if (result.status === 'paused') {
+        setExecutionPaused(true)
+        setPauseRequested(true)
+        setNoticeType('success')
+        setNotice('Workflow is paused. You can resume it again.')
+      } else {
+        setActiveExecutionId(null)
+        setExecutionPaused(false)
+        setPauseRequested(false)
+        setNoticeType(result.status === 'succeeded' ? 'success' : 'error')
+        setNotice(
+          result.status === 'succeeded'
+            ? 'Workflow resumed and completed successfully.'
+            : `Workflow status: ${result.status.replaceAll('_', ' ')}`,
+        )
+      }
+    } catch (error) {
+      // Keep the paused state and execution ID so the user can retry.
+      setNoticeType('error')
+      setNotice(error instanceof Error ? error.message : 'Unable to resume workflow.')
+    } finally {
+      setResuming(false)
+    }
+  }
+
   function resetEditor() {
-    if (!selectedQuestion) return
+    if (!selectedQuestion || executionLocked) return
 
     setEditorValue(
       selectedQuestion.type === 'python'
@@ -285,6 +581,8 @@ function App() {
               className="disconnect-button"
               type="button"
               onClick={disconnectFromPlatform}
+              disabled={executionLocked}
+              title={executionLocked ? 'Finish or resume the active execution first' : 'Disconnect'}
             >
               <LogOut size={15} />
               Disconnect
@@ -305,7 +603,7 @@ function App() {
                 type="button"
                 className={`question-nav-item ${isSelected ? 'selected' : ''}`}
                 onClick={() => void selectQuestion(question)}
-                disabled={loadingQuestion}
+                disabled={loadingQuestion || executionLocked}
               >
                 <span className={`question-nav-icon ${question.type}`}>
                   {question.type === 'python' ? (
@@ -330,42 +628,61 @@ function App() {
           )}
         </nav>
 
-        <div className="sidebar-connection">
-          {!isConnected ? (
-            <form
-              className="connection-form"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void connectToPlatform()
-              }}
-            >
-              <label htmlFor="api-key">
-                <KeyRound size={14} /> API key
-              </label>
-              <input
-                id="api-key"
-                type="password"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder="Enter API key"
-                autoComplete="off"
-              />
-              <button className="connect-button" type="submit" disabled={connecting}>
-                {connecting ? (
-                  <LoaderCircle size={16} className="spin" />
-                ) : (
-                  <KeyRound size={15} />
-                )}
-                {connecting ? 'Connecting…' : 'Connect'}
-              </button>
-            </form>
-          ) : (
-            <div className="connected-account">
-              <span className="connected-account-dot" />
-              <span>API connected</span>
-            </div>
-          )}
-        </div>
+      <div className="sidebar-connection">
+  {!isConnected ? (
+    <form
+      className="connection-form"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void connectToPlatform()
+      }}
+    >
+      <label htmlFor="demo-user">
+        <KeyRound size={14} /> Demo account
+      </label>
+
+      <select
+        id="demo-user"
+        value={selectedDemoEmail}
+        onChange={(event) => setSelectedDemoEmail(event.target.value)}
+        disabled={demoUsersLoading || connecting || demoUsers.length === 0}
+      >
+        {demoUsers.length === 0 && (
+          <option value="">
+            {demoUsersLoading ? 'Loading users…' : 'No demo users available'}
+          </option>
+        )}
+
+        {demoUsers.map((user) => (
+          <option key={user.user_id} value={user.email}>
+            {user.email}
+          </option>
+        ))}
+      </select>
+
+      <button
+        className="connect-button"
+        type="submit"
+        disabled={connecting || demoUsersLoading || !selectedDemoEmail}
+      >
+        {connecting ? (
+          <LoaderCircle size={16} className="spin" />
+        ) : (
+          <KeyRound size={15} />
+        )}
+        {connecting ? 'Logging in…' : 'Login'}
+      </button>
+    </form>
+  ) : (
+    <div className="connected-account">
+      <span className="connected-account-dot" />
+      <div className="connected-account-details">
+        <strong>{connectedUser?.email}</strong>
+        <small>Tenant: {connectedUser?.tenant_id}</small>
+      </div>
+    </div>
+  )}
+</div>
       </aside>
 
       <main className="main-area">
@@ -502,7 +819,12 @@ function App() {
                         {selectedQuestion.type === 'python' ? 'solution.py' : 'workflow.json'}
                       </div>
                     </div>
-                    <button className="reset-button" type="button" onClick={resetEditor}>
+                    <button
+                      className="reset-button"
+                      type="button"
+                      onClick={resetEditor}
+                      disabled={executionLocked}
+                    >
                       <RotateCcw size={15} />
                       Reset to starter
                     </button>
@@ -513,6 +835,7 @@ function App() {
                     aria-label={selectedQuestion.type === 'python' ? 'Python code editor' : 'Workflow JSON editor'}
                     value={editorValue}
                     onChange={(event) => setEditorValue(event.target.value)}
+                    disabled={executionLocked}
                     spellCheck={false}
                     autoCapitalize="off"
                     autoComplete="off"
@@ -523,24 +846,80 @@ function App() {
                     {selectedQuestion.type === 'workflow' && (
                       <span className="editor-format">JSON</span>
                     )}
-                    <button
-                      className="submit-button"
-                      type="button"
-                      disabled={
-                        submitting ||
-                        !selectedQuestion.permissions_satisfied ||
-                        !editorValue.trim()
-                      }
-                      onClick={() => void submitSolution()}
-                    >
-                      {submitting ? (
-                        <LoaderCircle size={17} className="spin" />
-                      ) : (
-                        <Play size={16} fill="currentColor" />
+
+                    <div className="execution-controls">
+                      {selectedQuestion.type === 'workflow' &&
+                        activeExecutionId &&
+                        !executionPaused && (
+                          <button
+                            className="pause-button"
+                            type="button"
+                            onClick={() => void pauseExecution()}
+                            disabled={pausing || pauseRequested || resuming}
+                          >
+                            {pausing ? (
+                              <LoaderCircle size={16} className="spin" />
+                            ) : (
+                              <Pause size={16} />
+                            )}
+                            {pausing
+                              ? 'Requesting…'
+                              : pauseRequested
+                                ? 'Pause requested'
+                                : 'Pause workflow'}
+                          </button>
+                        )}
+
+                      {selectedQuestion.type === 'workflow' && executionPaused && (
+                        <button
+                          className="resume-button"
+                          type="button"
+                          onClick={() => void resumeExecution()}
+                          disabled={resuming}
+                        >
+                          {resuming ? (
+                            <LoaderCircle size={16} className="spin" />
+                          ) : (
+                            <Play size={16} fill="currentColor" />
+                          )}
+                          {resuming ? 'Resuming…' : 'Resume workflow'}
+                        </button>
                       )}
-                      {submitting ? 'Submitting…' : 'Submit solution'}
-                    </button>
+
+                      {!executionLocked && (
+                        <button
+                          className="submit-button"
+                          type="button"
+                          disabled={
+                            submitting ||
+                            !selectedQuestion.permissions_satisfied ||
+                            !editorValue.trim()
+                          }
+                          onClick={() => void submitSolution()}
+                        >
+                          {submitting ? (
+                            <LoaderCircle size={17} className="spin" />
+                          ) : (
+                            <Play size={16} fill="currentColor" />
+                          )}
+                          {submitting ? 'Submitting…' : 'Submit solution'}
+                        </button>
+                      )}
+                    </div>
                   </div>
+
+                  {selectedQuestion.type === 'workflow' && activeExecutionId && (
+                    <div className={`execution-state ${executionPaused ? 'paused' : ''}`}>
+                      <span className="execution-state-dot" />
+                      {executionPaused
+                        ? 'Workflow is paused. Its checkpoint is ready to resume.'
+                        : pauseRequested
+                          ? 'Pause requested. Waiting for the current step to finish…'
+                          : submitting
+                            ? 'Workflow is running.'
+                            : 'Execution state may be unknown. You can request a pause if it is still running.'}
+                    </div>
+                  )}
                 </section>
 
                 <section className="content-card results-card">

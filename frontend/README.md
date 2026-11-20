@@ -1,75 +1,103 @@
-# React + TypeScript + Vite
+# Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite frontend for the Secure Multi-Tenant Agentic Workflow Sandbox.
 
-Currently, two official plugins are available:
+The interface allows users to select a demo account, browse available exercises, submit Python programs or workflows, inspect execution results, and pause or resume supported workflows.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Prerequisites
 
-## React Compiler
+- Node.js
+- npm
+- The FastAPI backend running at `http://127.0.0.1:8000`
+- OpenSandbox running at `http://127.0.0.1:8080` for actual sandbox execution
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Installation
 
-## Expanding the ESLint configuration
+From the repository root:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+cd frontend
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+## Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Start the frontend development server:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
+```
 
+Open:
+
+`http://127.0.0.1:5173`
+
+The Vite development server proxies requests beginning with `/api` to:
+
+`http://127.0.0.1:8000`
+
+The backend must be started separately. For demo account selection, enable demo authentication when starting the backend:
+
+```bash
+export SECURE_SANDBOX_DEMO_AUTH_ENABLED=true
+
+uv run uvicorn secure_agentic_sandbox.api:app \
+    --host 127.0.0.1 \
+    --port 8000
+```
+
+OpenSandbox must also be running for real sandbox executions.
+
+See the repository's root `README.md` for the complete startup procedure and system configuration.
+
+## Demo Accounts
+
+| Account | Tenant | Permissions |
+|---|---|---|
+| `alice@tenant-a.demo` | tenant-a | Inventory lookup and reservation |
+| `charlie@tenant-a.demo` | tenant-a | Inventory lookup |
+| `bob@tenant-b.demo` | tenant-b | Inventory lookup |
+
+These are local demo accounts. Selecting an account does not verify a real identity.
+
+## Available Scripts
+
+### `npm run dev`
+
+Starts the Vite development server.
+
+### `npm run build`
+
+Runs TypeScript project checks and creates a production build in `dist/`.
+
+### `npm run lint`
+
+Runs ESLint on the frontend source.
+
+### `npm run preview`
+
+Serves the production build locally for preview.
+
+## Frontend Structure
+
+```text
+frontend/
+├── src/
+│   ├── App.tsx
+│   ├── App.css
+│   ├── index.css
+│   └── ...
+├── index.html
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
+```
+
+## Validation
+
+Run the frontend checks:
+
+```bash
+npm run lint
+npm run build
 ```

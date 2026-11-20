@@ -17,6 +17,7 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from secure_agentic_sandbox import runner
+from secure_agentic_sandbox.auth_store import AuthStore
 from secure_agentic_sandbox.checkpoint_store import (
     CheckpointConflictError,
     CheckpointNotFoundError,
@@ -41,10 +42,13 @@ from secure_agentic_sandbox.workflow_service import (
 
 @dataclass(frozen=True, slots=True)
 class ApiPrincipal:
-    """Trusted identity and tool permissions associated with an API key."""
+    """Trusted identity and tool permissions."""
 
     tenant_id: str
     allowed_tools: frozenset[str]
+    user_id: str | None = None
+    email: str | None = None
+    role: str | None = None
 
     def __post_init__(self) -> None:
         validate_identifier(self.tenant_id, "tenant ID")
@@ -58,6 +62,16 @@ class ApiPrincipal:
             raise ValueError("Allowed tool names must be non-empty strings.")
 
         object.__setattr__(self, "allowed_tools", tools)
+
+        identity_fields = (self.user_id, self.email, self.role)
+
+        if any(value is not None for value in identity_fields) and not all(
+            isinstance(value, str) and value.strip()
+            for value in identity_fields
+        ):
+            raise ValueError(
+                "User ID, email and role must all be provided."
+            )
 
 
 class WorkflowSubmission(BaseModel):
@@ -77,6 +91,14 @@ class QuestionSubmission(BaseModel):
     source: str | None = None
     specification: dict[str, object] | None = None
     execution_id: str | None = None
+
+class DemoLoginRequest(BaseModel):
+    """Request body for local demo authentication."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: str
+
 
 def load_api_keys_from_environment() -> dict[str, ApiPrincipal]:
     """Load development API keys from SECURE_SANDBOX_API_KEYS."""
@@ -131,6 +153,7 @@ def create_app(
     broker: ToolBroker | None = None,
     question_registry: QuestionRegistry | None = None,
     checkpoint_db_path: str | Path | None = None,
+    demo_auth_enabled: bool | None = None,
 ) -> FastAPI:
     """Create the API with trusted tenant, broker and question configuration."""
 
@@ -166,6 +189,25 @@ def create_app(
             "SECURE_SANDBOX_CHECKPOINT_DB",
             "data/workflow_checkpoints.sqlite3",
         )
+    )
+
+    if demo_auth_enabled is None:
+        raw_demo_auth = os.getenv(
+            "SECURE_SANDBOX_DEMO_AUTH_ENABLED",
+            "false",
+        ).strip().lower()
+
+        if raw_demo_auth not in {"true", "false"}:
+            raise RuntimeError(
+                "SECURE_SANDBOX_DEMO_AUTH_ENABLED must be true or false."
+            )
+
+        demo_auth_enabled = raw_demo_auth == "true"
+
+    auth_store = (
+        AuthStore(database_path)
+        if demo_auth_enabled
+        else None
     )
 
     # The default mock inventory shares the checkpoint database so that
@@ -235,10 +277,22 @@ def create_app(
             if hmac.compare_digest(candidate, stored_digest):
                 principal = stored_principal
 
+        if principal is None and auth_store is not None:
+            user = auth_store.authenticate_session(parts[1])
+
+            if user is not None:
+                principal = ApiPrincipal(
+                    tenant_id=user.tenant_id,
+                    allowed_tools=user.allowed_tools,
+                    user_id=user.user_id,
+                    email=user.email,
+                    role=user.role,
+                )
+
         if principal is None:
             raise HTTPException(
                 status_code=401,
-                detail="Invalid API key.",
+                detail="Invalid or expired authentication token.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -272,6 +326,110 @@ def create_app(
         )
 
         return result
+
+
+
+    @app.get("/auth/demo-users")
+    async def list_demo_users():
+        """List identities available for local demo authentication."""
+
+        if auth_store is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Demo authentication is disabled.",
+            )
+
+        return {"users": auth_store.list_demo_users()}
+
+    @app.post("/auth/login")
+    async def demo_login(request: DemoLoginRequest):
+        """Create a demo session for a predefined user."""
+
+        if auth_store is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Demo authentication is disabled.",
+            )
+
+        try:
+            token, user = auth_store.create_session(request.email)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=401,
+                detail="Unknown or inactive demo user.",
+            ) from exc
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user": {
+                "user_id": user.user_id,
+                "email": user.email,
+                "tenant_id": user.tenant_id,
+                "role": user.role,
+            },
+        }
+
+    @app.post("/auth/logout")
+    async def demo_logout(
+        authorization: str | None = Header(default=None),
+    ):
+        """Revoke the current demo session."""
+
+        if auth_store is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Demo authentication is disabled.",
+            )
+
+        if authorization is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Bearer authentication required.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        parts = authorization.split()
+
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authorization header.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        token = parts[1]
+
+        if not auth_store.revoke_session(token):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid, expired or already revoked demo session.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        return {"status": "logged_out"}
+
+    @app.get("/auth/me")
+    async def get_current_user(
+        authorization: str | None = Header(default=None),
+    ):
+        """Return the identity associated with the current bearer token."""
+
+        principal = authenticate(authorization)
+
+        if principal.user_id is None:
+            raise HTTPException(
+                status_code=403,
+                detail="This endpoint requires demo-user authentication.",
+            )
+
+        return {
+            "user_id": principal.user_id,
+            "email": principal.email,
+            "tenant_id": principal.tenant_id,
+            "role": principal.role,
+        }
+
 
     @app.get("/health")
     async def health():
