@@ -1,0 +1,165 @@
+Waiting for 500m gVisor sandbox...
+Docker container: 71313d4cb1d5
+Runtime=runsc NanoCpus=500000000 Memory=536870912
+CPU quota:
+50000 100000
+--- Sample 1 ---
+usage_usec 208735
+user_usec 106355
+system_usec 102380
+core_sched.force_idle_usec 0
+nr_periods 2
+nr_throttled 2
+throttled_usec 241413
+nr_bursts 0
+burst_usec 0
+--- Sample 2 ---
+usage_usec 599076
+user_usec 427911
+system_usec 171164
+core_sched.force_idle_usec 0
+nr_periods 12
+nr_throttled 9
+throttled_usec 1332227
+nr_bursts 0
+burst_usec 0
+--- Sample 3 ---
+usage_usec 1101117
+user_usec 911269
+system_usec 189847
+core_sched.force_idle_usec 0
+nr_periods 22
+nr_throttled 19
+throttled_usec 2377683
+nr_bursts 0
+burst_usec 0
+--- Sample 4 ---
+usage_usec 1603779
+user_usec 1394235
+system_usec 209544
+core_sched.force_idle_usec 0
+nr_periods 33
+nr_throttled 30
+throttled_usec 3625739
+nr_bursts 0
+burst_usec 0
+--- Sample 5 ---
+usage_usec 2110772
+user_usec 1880654
+system_usec 230117
+core_sched.force_idle_usec 0
+nr_periods 43
+nr_throttled 40
+throttled_usec 4615210
+nr_bursts 0
+burst_usec 0
+--- Sample 6 ---
+usage_usec 2619252
+user_usec 2367966
+system_usec 251286
+core_sched.force_idle_usec 0
+nr_periods 53
+nr_throttled 50
+throttled_usec 5666066
+nr_bursts 0
+burst_usec 0
+--- Sample 7 ---
+usage_usec 3125529
+user_usec 2855021
+system_usec 270507
+core_sched.force_idle_usec 0
+nr_periods 63
+nr_throttled 60
+throttled_usec 6673954
+nr_bursts 0
+burst_usec 0
+--- Sample 8 ---
+usage_usec 3633391
+user_usec 3341422
+system_usec 291968
+core_sched.force_idle_usec 0
+nr_periods 73
+nr_throttled 70
+throttled_usec 7680230
+nr_bursts 0
+burst_usec 0
+--- Sample 9 ---
+usage_usec 4141185
+user_usec 3829887
+system_usec 311298
+core_sched.force_idle_usec 0
+nr_periods 83
+nr_throttled 80
+throttled_usec 8817004
+nr_bursts 0
+burst_usec 0
+--- Sample 10 ---
+usage_usec 4649694
+user_usec 4325628
+system_usec 324066
+core_sched.force_idle_usec 0
+nr_periods 93
+nr_throttled 90
+throttled_usec 9890069
+nr_bursts 0
+burst_usec 0
+--- Sample 11 ---
+usage_usec 5153040
+user_usec 4809639
+system_usec 343400
+core_sched.force_idle_usec 0
+nr_periods 103
+nr_throttled 100
+throttled_usec 10903687
+nr_bursts 0
+burst_usec 0
+--- Sample 12 ---
+usage_usec 5652230
+user_usec 5295353
+system_usec 356876
+core_sched.force_idle_usec 0
+nr_periods 113
+nr_throttled 110
+throttled_usec 11970298
+nr_bursts 0
+burst_usec 0
+--- Sample 13 ---
+usage_usec 6151487
+user_usec 5783007
+system_usec 368480
+core_sched.force_idle_usec 0
+nr_periods 123
+nr_throttled 120
+throttled_usec 13087106
+nr_bursts 0
+burst_usec 0
+--- Sample 14 ---
+usage_usec 6651595
+user_usec 6270953
+system_usec 380642
+core_sched.force_idle_usec 0
+nr_periods 133
+nr_throttled 130
+throttled_usec 14133620
+nr_bursts 0
+burst_usec 0
+--- Sample 15 ---
+usage_usec 7151906
+user_usec 6757402
+system_usec 394503
+core_sched.force_idle_usec 0
+nr_periods 143
+nr_throttled 140
+throttled_usec 15121112
+nr_bursts 0
+burst_usec 0
+--- Sample 16 ---
+usage_usec 7650109
+user_usec 7239338
+system_usec 410771
+core_sched.force_idle_usec 0
+nr_periods 153
+nr_throttled 150
+throttled_usec 16271951
+nr_bursts 0
+burst_usec 0

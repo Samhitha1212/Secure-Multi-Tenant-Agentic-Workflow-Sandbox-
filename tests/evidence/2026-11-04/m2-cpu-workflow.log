@@ -1,0 +1,20 @@
+retrying GET http://127.0.0.1:8080/v1/sandboxes/de71640b-917a-45c6-9203-d9bb9b9cba73/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=1bdbc64022764beeb2fab615e8cf9101
+{
+  "execution_id": "bd76cc53-248d-4aae-a81c-b47969deff99",
+  "submission_path": "tests/fixtures/m2/cpu_limit_probe.py",
+  "timeout_seconds": 40,
+  "cpu": "500m",
+  "memory": "512Mi",
+  "max_output_bytes": 65536,
+  "validation_error": null,
+  "execution_result": {
+    "sandbox_id": "de71640b-917a-45c6-9203-d9bb9b9cba73",
+    "stdout": "CPU_PROBE_STARTED\nPID: 27\nDuration: 15 seconds\nCPU_PROBE_FINISHED\nWall time: 15.00 seconds\nIterations: 29589545\nFinal value: 131964434\n",
+    "stderr": "",
+    "exit_code": 0,
+    "timed_out": false,
+    "duration_seconds": 15.29011126000114,
+    "output_truncated": false
+  },
+  "status": "succeeded"
+}

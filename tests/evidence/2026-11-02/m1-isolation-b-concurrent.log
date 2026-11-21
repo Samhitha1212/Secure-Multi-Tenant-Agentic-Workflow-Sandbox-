@@ -1,0 +1,12 @@
+HOST_B_START=2026-11-02T16:33:17,544553652+05:30
+retrying GET http://127.0.0.1:8080/v1/sandboxes/4b2b6763-60f7-4271-82a0-699f82d3f9ac/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=fa01c75aee6740379e56b54913875dde
+{
+  "sandbox_id": "4b2b6763-60f7-4271-82a0-699f82d3f9ac",
+  "stdout": "ISOLATION_PASS_FOREIGN_FILE_NOT_VISIBLE\n",
+  "stderr": "",
+  "exit_code": 0,
+  "timed_out": false,
+  "duration_seconds": 5.457820743999946
+}
+HOST_B_END=2026-11-02T16:33:24,849059185+05:30
+Tenant B exit code: 0

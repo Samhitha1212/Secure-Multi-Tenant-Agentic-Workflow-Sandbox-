@@ -1,0 +1,20 @@
+retrying GET http://127.0.0.1:8080/v1/sandboxes/235c2be7-1782-43f7-b117-9744b69da448/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=6c4df4358c614944b48274657c359714
+{
+  "execution_id": "f3cf2421-1031-4be3-891b-15c38b39ac74",
+  "submission_path": "tests/fixtures/m2/process_limit_test_light.py",
+  "timeout_seconds": 30,
+  "cpu": "500m",
+  "memory": "512Mi",
+  "max_output_bytes": 65536,
+  "validation_error": null,
+  "execution_result": {
+    "sandbox_id": "235c2be7-1782-43f7-b117-9744b69da448",
+    "stdout": "PID_LIMIT_TEST_STARTED\nPID_LIMIT: unavailable\nINITIAL_PID_COUNT: unavailable\nMEMORY_LIMIT: unavailable\nPROCESS_CREATION_BLOCKED at child=110\nError: [Errno 12] Cannot allocate memory: 'sleep'\nErrno: 12\nCHILDREN_CREATED=110\nCURRENT_PID_COUNT: unavailable\nALL_CHILDREN_REAPED\nFINAL_PID_COUNT: unavailable\nPID_LIMIT_TEST_FINISHED\n",
+    "stderr": "",
+    "exit_code": 0,
+    "timed_out": false,
+    "duration_seconds": 3.1366446140000335,
+    "output_truncated": false
+  },
+  "status": "succeeded"
+}

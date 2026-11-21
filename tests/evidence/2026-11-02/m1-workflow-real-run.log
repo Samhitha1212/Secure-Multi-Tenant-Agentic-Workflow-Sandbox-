@@ -1,0 +1,15 @@
+retrying GET http://127.0.0.1:8080/v1/sandboxes/d802f2e4-55ce-49ad-abed-83e25d4097f6/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=4c7173e126d4420499846dcacbb2371b
+{
+  "submission_path": "tests/fixtures/m1/real_success.py",
+  "timeout_seconds": 20,
+  "validation_error": null,
+  "execution_result": {
+    "sandbox_id": "d802f2e4-55ce-49ad-abed-83e25d4097f6",
+    "stdout": "M1_REAL_SANDBOX_OK\n2 + 3 = 5\nM1_REAL_SANDBOX_FINISHED\n",
+    "stderr": "",
+    "exit_code": 0,
+    "timed_out": false,
+    "duration_seconds": 8.262270967999939
+  },
+  "status": "succeeded"
+}

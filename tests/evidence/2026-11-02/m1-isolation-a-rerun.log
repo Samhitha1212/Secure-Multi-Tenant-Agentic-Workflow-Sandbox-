@@ -1,0 +1,9 @@
+retrying GET http://127.0.0.1:8080/v1/sandboxes/605cdbe2-b58c-4e03-b2f3-b3e24f7c87c3/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=7b790e192b8542a1a7ad73bb674b871c
+{
+  "sandbox_id": "605cdbe2-b58c-4e03-b2f3-b3e24f7c87c3",
+  "stdout": "EXECUTION_A_FILE_CREATED\nEXECUTION_A_FINISHED\n",
+  "stderr": "",
+  "exit_code": 0,
+  "timed_out": false,
+  "duration_seconds": 15.513342973000135
+}

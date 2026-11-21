@@ -1,0 +1,24 @@
+retrying GET http://127.0.0.1:8080/v1/sandboxes/271ebe26-b97e-410d-bb74-b33b26b00af7/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=06e83d79883240bda1c345bbef45ba25
+
+=== OpenSandbox OOM diagnostic probe ===
+Context: sandbox_id='271ebe26-b97e-410d-bb74-b33b26b00af7' state='Failed' backend_type='docker' backend_identifiers={'containerId': 'c55a8fb1a6f2936e18f4020f73dcbd8ae0c82d6dd5d23dd5f5cf405f965936c1', 'containerName': 'sandbox-271ebe26-b97e-410d-bb74-b33b26b00af7'}
+Events: sandbox_id='271ebe26-b97e-410d-bb74-b33b26b00af7' kind='events' scope='runtime' delivery='inline' content_type='text/plain; charset=utf-8' truncated=False content='Container:  c55a8fb1a6f2 (sandbox-271ebe26-b97e-410d-bb74-b33b26b00af7)\nStatus:     exited\nCreated:    2026-11-14T12:26:31.279061125Z\nStarted:    2026-11-14T12:26:31.430235489Z\nFinished:   2026-11-14T12:26:40.941810764Z\nEvent:      OOMKilled - container was killed due to out-of-memory\nEvent:      Exited with code 137' content_url=None content_length=318 expires_at=None warnings=None
+{
+  "execution_id": "7cdf369e-e078-4603-998e-6cc3085cb249",
+  "submission_path": "tests/fixtures/m2/memory_limit_probe.py",
+  "timeout_seconds": 30,
+  "cpu": "500m",
+  "memory": "512Mi",
+  "max_output_bytes": 1048576,
+  "validation_error": null,
+  "execution_result": {
+    "sandbox_id": "271ebe26-b97e-410d-bb74-b33b26b00af7",
+    "stdout": "MEMORY_PROBE_STARTED\nPID: 28\nALLOCATED_MIB=16\nALLOCATED_MIB=32\nALLOCATED_MIB=48\nALLOCATED_MIB=64\nALLOCATED_MIB=80\nALLOCATED_MIB=96\nALLOCATED_MIB=112\nALLOCATED_MIB=128\nALLOCATED_MIB=144\nALLOCATED_MIB=160\nALLOCATED_MIB=176\nALLOCATED_MIB=192\nALLOCATED_MIB=208\nALLOCATED_MIB=224\nALLOCATED_MIB=240\nALLOCATED_MIB=256\nALLOCATED_MIB=272\nALLOCATED_MIB=288\nALLOCATED_MIB=304\nALLOCATED_MIB=320\nALLOCATED_MIB=336\nALLOCATED_MIB=352\nALLOCATED_MIB=368\nALLOCATED_MIB=384\nALLOCATED_MIB=400\nALLOCATED_MIB=416\nALLOCATED_MIB=432\nALLOCATED_MIB=448\nALLOCATED_MIB=464\nALLOCATED_MIB=480\nALLOCATED_MIB=496\nALLOCATED_MIB=512\nALLOCATED_MIB=528\nALLOCATED_MIB=544\nALLOCATED_MIB=560\nALLOCATED_MIB=576\nALLOCATED_MIB=592\nALLOCATED_MIB=608\nALLOCATED_MIB=624\nALLOCATED_MIB=640\nALLOCATED_MIB=656\nALLOCATED_MIB=672\nALLOCATED_MIB=688\nALLOCATED_MIB=704\nALLOCATED_MIB=720\nALLOCATED_MIB=736\nALLOCATED_MIB=752\nALLOCATED_MIB=768\nALLOCATED_MIB=784\nALLOCATED_MIB=800\nALLOCATED_MIB=816\nALLOCATED_MIB=832\nALLOCATED_MIB=848\nALLOCATED_MIB=864\nALLOCATED_MIB=880\nALLOCATED_MIB=896\nALLOCATED_MIB=912\nALLOCATED_MIB=928\nALLOCATED_MIB=944\nALLOCATED_MIB=960\nALLOCATED_MIB=976\nALLOCATED_MIB=992\n",
+    "stderr": "Execution timed out after 30 seconds.",
+    "exit_code": null,
+    "timed_out": true,
+    "duration_seconds": 30.021438275001856,
+    "output_truncated": false
+  },
+  "status": "timed_out"
+}

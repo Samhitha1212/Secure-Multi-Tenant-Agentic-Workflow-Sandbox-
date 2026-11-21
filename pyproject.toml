@@ -1,0 +1,31 @@
+[project]
+name = "secure-agentic-sandbox"
+version = "0.1.0"
+description = "A secure sandbox prototype for isolated Python execution using OpenSandbox and gVisor."
+readme = "README.md"
+authors = [
+    { name = "Samhitha1212", email = "cs23btech11018@iith.ac.in" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.162.7",
+    "langgraph>=1.2.19",
+    "opensandbox==1.2.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+secure-agentic-sandbox = "secure_agentic_sandbox.runner:main"
+secure-agentic-workflow = "secure_agentic_sandbox.workflow_runner:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.1",
+]

@@ -1,0 +1,7 @@
+INFO:     Started server process [31690]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:46533 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52748 - "GET /health HTTP/1.1" 200 OK
+retrying GET http://127.0.0.1:8080/v1/sandboxes/2a0bb067-f938-47bb-8ef1-ccab54f7943f/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=6c1e9179f82d40239f3279a5ecca8ed2
+retrying GET http://127.0.0.1:8080/v1/sandboxes/c6d96c57-34a9-438f-9137-34452600a86d/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=1e8fe15060d1417280d2b50d92ab36c3
