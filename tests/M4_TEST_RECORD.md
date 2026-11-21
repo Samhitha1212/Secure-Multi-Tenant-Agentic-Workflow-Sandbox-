@@ -395,6 +395,7 @@ a successful first-attempt connection.
 
 - tests/integration/m4_live_pause_resume.py
 - tests/evidence/2026-11-15/m4-live-pause-resume.log
+- tests/evidence/2026-11-21/m4-live-pause-resume.log (latest validation)
 
 ## 7. Conclusion
 
@@ -404,3 +405,94 @@ A real two-step Python workflow was paused safely after its first step.
 The checkpoint preserved the completed step and cursor. Resumption executed
 the remaining step in a new OpenSandbox container. Both containers used
 gVisor through runsc and were removed after execution.
+
+
+# M4.7 - Live API Process Crash and Recovery Integration Test
+
+**Date:** 2026-11-21
+**Status:** PASSED using a real API process restart and persistent SQLite checkpoint storage.
+
+## 1. Objective
+
+Verify that workflow progress can be recovered when the API process is forcibly terminated while a Python workflow step is executing.
+
+The test checks that the checkpoint survives the process crash, the interrupted execution can be resumed after restarting the API, and previously completed workflow steps are not replayed.
+
+## 2. Test Environment
+
+- API: FastAPI application
+- Checkpoint storage: persistent SQLite database
+- Sandbox runtime: OpenSandbox with Docker and gVisor (`runsc`)
+- Test script: `tests/integration/m4_api_crash_recovery.py`
+
+## 3. Execution
+
+1. Started a two-step Python workflow through the API.
+2. Allowed the first step to complete and verified that its progress was checkpointed.
+3. Waited until the second Python step was running in its sandbox.
+4. Forcefully terminated the API process using SIGKILL.
+5. Confirmed that the original HTTP request was disconnected.
+6. Manually removed the orphaned sandbox container left by the terminated API process.
+7. Restarted the API using the same SQLite checkpoint database.
+8. Verified that startup recovery changed the interrupted checkpoint to `paused`, preserving cursor 1.
+9. Resumed the workflow through the API.
+10. Verified that the workflow completed without replaying the first step.
+
+## 4. Observed Results
+
+| Check | Observed result |
+|---|---|
+| API process termination | SIGKILL |
+| Original HTTP request | Disconnected |
+| Checkpoint database | Reused after restart |
+| Recovered checkpoint status | paused |
+| Recovered checkpoint cursor | 1 |
+| Previously completed first step | Not replayed |
+| Resume API response | HTTP 200 |
+| Second workflow step | Executed successfully |
+| Final workflow status | succeeded |
+| Final checkpoint status | completed |
+| Final checkpoint cursor | 2 |
+
+## 5. Scope and Limitations
+
+- This test verifies checkpoint recovery after an actual API process termination and restart.
+- The orphaned sandbox container was removed manually during the test. Automatic orphan-container cleanup after an abrupt API crash is not implemented or demonstrated.
+- Recovery is based on persisted application-level workflow checkpoints; it does not restore the interrupted Python process itself.
+- Exactly-once side effects for arbitrary external tools are not guaranteed. The default SQLite-backed mock inventory service provides its own durable idempotency mechanism.
+
+## 6. Evidence
+
+- `tests/integration/m4_api_crash_recovery.py`
+- `tests/evidence/2026-11-21/m4-api-crash-recovery.log`
+
+## 7. Conclusion
+
+**Result: PASS**
+
+The API was forcibly terminated while a Python step was running. After restarting against the same SQLite database, the application recovered the checkpoint in a paused state and successfully resumed the workflow. The previously completed step was not replayed, and the workflow reached its completed state.
+
+
+
+---
+
+# Final Project Validation Snapshot
+
+**Date:** 2026-11-21
+
+| Validation | Result |
+|---|---|
+| Full Python test suite (`uv run pytest -v`) | 230 passed |
+| Python lint (`uv run ruff check .`) | PASS |
+| Frontend lint (`cd frontend && npm run lint`) | PASS |
+| Frontend production build (`cd frontend && npm run build`) | PASS |
+| M4 live pause/resume integration | PASS |
+| M4 API crash-recovery integration | PASS |
+| `git diff --check` | PASS |
+| `git diff --cached --check` | PASS |
+
+The two M4 live integration tests are standalone scripts and are not included in the 230 pytest tests.
+
+Evidence:
+- `tests/evidence/2026-11-21/m4-live-pause-resume.log`
+- `tests/evidence/2026-11-21/m4-api-crash-recovery.log`

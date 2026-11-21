@@ -101,7 +101,8 @@ The M3 record also documents a manual end-to-end inventory workflow test dated 2
 - Workflow tests: `tests/unit/test_workflow_service.py`
 - Live OpenSandbox test: `tests/integration/m4_live_pause_resume.py`
 - API crash-recovery test: `tests/integration/m4_api_crash_recovery.py`
-- Live integration logs: `tests/evidence/2026-11-15/`
+- Live pause/resume evidence: `tests/evidence/2026-11-15/` and `tests/evidence/2026-11-21/`
+- API crash-recovery evidence: `tests/evidence/2026-11-21/`
 
 **Limitations:**
 - The live pause/resume integration test exercises the workflow service and checkpoint store directly; it is not a complete browser-to-HTTP pause/resume demonstration.
