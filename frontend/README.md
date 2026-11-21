@@ -56,7 +56,7 @@ See the repository's root `README.md` for the complete startup procedure and sys
 |---|---|---|
 | `alice@tenant-a.demo` | tenant-a | Inventory lookup and reservation |
 | `charlie@tenant-a.demo` | tenant-a | Inventory lookup |
-| `bob@tenant-b.demo` | tenant-b | Inventory lookup |
+| `bob@tenant-b.demo` | tenant-b | Inventory lookup and reservation |
 
 These are local demo accounts. Selecting an account does not verify a real identity.
 

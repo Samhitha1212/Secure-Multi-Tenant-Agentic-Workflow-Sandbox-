@@ -1,11 +1,11 @@
-INFO:     Started server process [137070]
+INFO:     Started server process [32077]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     Uvicorn running on http://127.0.0.1:37985 (Press CTRL+C to quit)
-INFO:     127.0.0.1:41744 - "GET /health HTTP/1.1" 200 OK
-retrying GET http://127.0.0.1:8080/v1/sandboxes/11333d31-55c0-443d-9621-c89763c9e54c/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=1e53a8a789cf44d382d522787cf76454
-INFO:     127.0.0.1:41754 - "POST /executions/m4-api-crash-execution/resume HTTP/1.1" 200 OK
+INFO:     Uvicorn running on http://127.0.0.1:46533 (Press CTRL+C to quit)
+INFO:     127.0.0.1:43080 - "GET /health HTTP/1.1" 200 OK
+retrying GET http://127.0.0.1:8080/v1/sandboxes/4731e4a4-0b83-4c9a-8438-7f4065835307/proxy/44772/ping: attempt=2 cause=status_502 status=502 backoff=0.500s request_id=4f8c28803d1740a6a6d6a64d4b094ede
+INFO:     127.0.0.1:43092 - "POST /executions/m4-api-crash-execution/resume HTTP/1.1" 200 OK
 INFO:     Shutting down
 INFO:     Waiting for application shutdown.
 INFO:     Application shutdown complete.
-INFO:     Finished server process [137070]
+INFO:     Finished server process [32077]

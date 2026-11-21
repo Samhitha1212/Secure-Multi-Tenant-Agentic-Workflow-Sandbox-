@@ -45,7 +45,7 @@ class AuthStore:
             "email": "bob@tenant-b.demo",
             "tenant_id": "tenant-b",
             "role": "member",
-            "allowed_tools": ["inventory.lookup"],
+            "allowed_tools": ["inventory.lookup", "inventory.reserve"],
         },
     )
 

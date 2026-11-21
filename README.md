@@ -177,7 +177,7 @@ The local demo authentication system provides three predefined accounts.
 |---|---|---|
 | `alice@tenant-a.demo` | tenant-a | `inventory.lookup`, `inventory.reserve` |
 | `charlie@tenant-a.demo` | tenant-a | `inventory.lookup` |
-| `bob@tenant-b.demo` | tenant-b | `inventory.lookup` |
+| `bob@tenant-b.demo` | tenant-b | `inventory.lookup`, `inventory.reserve` | 
 
 Select an account from the frontend to create a demo session.
 

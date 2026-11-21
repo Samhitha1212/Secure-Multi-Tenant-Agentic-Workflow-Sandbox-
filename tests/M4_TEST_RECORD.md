@@ -394,7 +394,7 @@ a successful first-attempt connection.
 ## 6. Evidence
 
 - tests/integration/m4_live_pause_resume.py
-- tests/evidence/2026-11-12/m4-live-pause-resume.log
+- tests/evidence/2026-11-15/m4-live-pause-resume.log
 
 ## 7. Conclusion
 
